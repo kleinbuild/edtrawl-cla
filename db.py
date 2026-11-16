@@ -102,9 +102,11 @@ CDE_COLUMNS = (
     CdeColumn("Grade 12", "grade_12", "INTEGER", SNAPSHOT),
     CdeColumn("Latitude", "lat", "REAL", IDENTITY),
     CdeColumn("Longitude", "lng", "REAL", IDENTITY),
-    # Geographic and legislative districts: not used by anything in this build.
+    # Other geographic and legislative districts: not used by anything in this build.
     CdeColumn("Geographic County Code", None, None, ()),
-    CdeColumn("Geographic County Name", None, None, ()),
+    # Where the school physically is. 89 schools (mostly charters) are administered from another county,
+    # so traffic and "which county's listings to fetch" use this, not county_name.
+    CdeColumn("Geographic County Name", "geo_county_name", "TEXT", IDENTITY),
     CdeColumn("Geographic Elementary District Code", None, None, ()),
     CdeColumn("Geographic Elementary District Name", None, None, ()),
     CdeColumn("Geographic High District Code", None, None, ()),
