@@ -81,7 +81,7 @@ Gate for the whole build: with an untouched config, the full pipeline completes 
 | `test_edtrawl.py`, `tests/fixtures/` | one stdlib `unittest` file, offline |
 | `README.md`, `.gitignore`, `config.example.toml` | — |
 
-Dependencies: standard library only, including HTTP (`urllib`). Playwright only if edjoin turns out to need a session.
+Dependencies: standard library only, including HTTP (`urllib`). The probe showed edjoin needs no session, so there is no browser automation.
 
 **Modules do not print.** `ingest`, `travel`, `edjoin`, `match`, `query` return data and accept an optional `on_progress(done, total, label)` callback. Only `ui.py` writes to the terminal. That keeps the voice in one place and the logic testable.
 
@@ -210,9 +210,11 @@ What this shows: the two mornings agree closely (1.43, 1.45). The afternoon is w
 
 **Calibration (developer step, no key).** Use schools as stand-in homes: 60 of them spread over the four locale groups and regions, each paired with about 10 schools within 20 miles. About 120 OSRM table requests. Fit each `(a, b)` with `statistics.linear_regression` on four-fifths of the pairs and report median and 90th-percentile error on the rest, per group, plus the three worst pairs. That report states how far the offline formula is from real road time. Neither tier has been measured against real traffic; the README says so, and says the personal correction is the remedy.
 
-**Fetch.** Listings with filters pushed to the server, one request per second, hard page cap, upsert on `posting_id`. Detail pages only for jobs whose matched district has a school in range. `--from-file` loads a saved response.
+**Fetch.** Confirmed by the probe (2026-11-16, `RECON.md`): the listing endpoint and the detail page both answer anonymously, with no cookie and no special header. So there is no login, no browser automation and no stored session in this build. Per county in range: `regions=<county id>&jobTypes=<17 teacher ids>&days=<1|7|31>&rows=50&stateID=24`, all 19 parameters always sent, one request every 2 seconds, one at a time, hard page cap, stop on 403/429/5xx with no retry loop, upsert on `posting_id`. Dates arrive as `/Date(ms)/`; `displayUntil` is ignored unless `displayFlag` is `By Date`. Detail pages are fetched only for jobs whose matched district has a school in range and whose title did not already name a school. `--from-file` loads a saved response.
 
-**Match.** Same three steps for the district string (candidates: districts and charter schools in the listing's county) and then the site string (candidates: the matched district's schools):
+The listing has no school field. The site name comes from, in order: the title (`… @ Theodore Judah ELEM-114`, `… at Marvin Marshall`, `… (Carroll Elementary School)`), then the detail page's optional `Location(s):` block. The address in the detail page's JSON-LD is the district office in the saved example (it is the same street as the HR contacts), so it is not used for matching.
+
+**Match.** Same three steps for the district string (candidates: districts and charter schools in the listing's county) and then the site (candidates: the matched district's schools). For the site, step 0 runs first: look for any of the district's normalized school names inside the normalized title and `Location(s)` text; exactly one hit, or one hit that contains all the others, is `exact`. A charter whose own name is the edjoin district name matches as a school directly. Then:
 1. Exact after shared normalization → `exact`.
 2. `difflib` score on normalized, token-sorted strings; accept the top candidate as `fuzzy` only if score ≥ `match_accept` (0.90) and lead over the runner-up ≥ `match_margin` (0.05).
 3. If `[llm]` is configured and step 2 did not accept: send the raw string and the top 15 candidates; the answer must be one of those codes or null.
@@ -415,13 +417,13 @@ Implement §3 "Calibration". Seeded sampling; raw pairs written to `data/calibra
 
 **Done when:** `COEFFS` holds fitted values with a comment giving date, sample size and "fitted against OpenStreetMap road times via OSRM; © OpenStreetMap contributors"; you report per locale group the median and 90th-percentile error in minutes and percent, the three worst pairs with a likely cause, and a plain statement of whether any group is too inaccurate to be useful.
 
-### E — edjoin fetch · Sonnet 5.5 · effort medium (Opus 5.5 if auth is required)
+### E — edjoin fetch · Sonnet 5.5 · effort medium
 
 **Owns:** `edjoin.py`. Start after B.
 
-No auth needed: `fetch_listings(filters, on_progress=None)` pages `/Home/LoadJobs` with urllib, one request per second, an honest User-Agent, a hard page cap; `save_listings(conn, rows)` upserts on `posting_id`; `fetch_detail` and `parse_detail(html)` extract `location_raw`; `load_file(path)` feeds a saved response through `save_listings`. Reject any posting URL that is not `https://www.edjoin.org/…`.
+Read `RECON.md` first; it has the exact query string, the county id table, the teacher job-type ids, the date formats and the paging rule. No login exists in this build.
 
-Auth needed: add Playwright. `login` opens a visible browser, the user logs in by hand (CAPTCHA; do not automate), `storage_state` is saved to `.auth/edjoin.json` with mode 600. An expired session raises a typed exception. Username and password never pass through this program.
+`fetch_listings(county_ids, days=31, limit=None, on_progress=None)` pages `/Home/LoadJobs` with urllib, all 19 parameters, one request every 2 seconds, a hard page cap, and stops (typed exception, no retry loop) on 403, 429, 5xx or a non-JSON body. `save_listings(conn, rows)` upserts on `posting_id` and stores a `location_raw` guess taken from the title. `fetch_detail(posting_id)` and `parse_detail(html)` return the `Location(s):` text or None. `load_file(path)` feeds a saved response through `save_listings`. `county_ids_in_range(conn, cfg)` maps the counties of schools that have a commute row to edjoin county ids. Reject any posting URL that is not `https://www.edjoin.org/…`.
 
 **Tests:** the listing fixture parses to the expected count and fields; saving twice leaves one row per posting, `first_seen` unchanged, `last_seen` updated; `parse_detail` returns the expected text; a malformed response raises; a non-edjoin URL is rejected.
 
@@ -522,6 +524,7 @@ Check each line of the 04 spec's requirements, constraints and deliverables: met
 |---|---|---|
 | Traffic-aware drive time from a provider with departure/arrival time | Open road routing × a public rush-hour index × a personal correction | §1: the terms of the free commercial option forbid the cache the spec also requires |
 | An LLM call fuzzy-matches each listing | Exact and coded matching first; LLM only for the leftovers and only if configured | owner's instruction that it must work without an API |
+| edjoin "requires user authentication to search"; handle it | No authentication at all | the probe (`RECON.md`) found the site's own search endpoint and the posting pages answer anonymous requests; the simplest handling of a login is not needing one |
 | Four tables | Eight | homes, known drives, match cache and the user's marks each hold a different kind of fact |
 | Query interface | Kept as `search`, plus a guided daily flow and an HTML page | owner's request for a cheerful, engaging experience |
 

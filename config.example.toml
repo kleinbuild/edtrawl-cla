@@ -1,0 +1,40 @@
+# EdTrawl settings.
+# EdTrawl writes your own copy of this file as config.toml the first time it runs.
+# You can edit config.toml in any text editor. Lines that start with # are notes and are ignored.
+
+# Your home spot, rounded to about 100 metres. Setup fills this in; you never need to type it.
+# home_key = "38.577,-121.495"
+
+# How far from home to look for schools, in miles as the crow flies.
+radius_miles = 20
+
+# How many days a saved drive time is trusted before EdTrawl works it out again.
+max_age_days = 90
+
+# How drive times are worked out: "estimate" works offline, "osrm" asks a free road-map service.
+routing = "estimate"
+
+# The road-map service used when routing is "osrm". Leave this alone unless you run your own.
+osrm_url = "https://router.project-osrm.org"
+
+# How much morning rush hour slows a drive (0 means not at all). Fitted to real drives; best left alone.
+rush_scale_am = 0.75
+
+# How much afternoon rush hour slows a drive (0 means not at all). Fitted to real drives; best left alone.
+rush_scale_pm = 1.2
+
+# Optional: an AI model that helps match job listings to schools. Leave these off if you don't have one.
+# The web address of the model service, for example a model on your own computer through Ollama.
+# llm_base_url = "http://localhost:11434/v1"
+
+# The name of the model to use.
+# llm_model = "llama3.2"
+
+# The key for the model service, if it needs one. This file stays on your computer.
+# llm_key = ""
+
+# How sure the name matching must be before it links a listing to a school (0 to 1).
+match_accept = 0.90
+
+# How far ahead the best match must be of the next one (0 to 1).
+match_margin = 0.05
