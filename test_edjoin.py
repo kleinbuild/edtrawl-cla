@@ -138,6 +138,16 @@ class Detail(unittest.TestCase):
         self.assertEqual(fake.urls, [])
 
 
+class Sites(unittest.TestCase):
+    def test_fetch_sites_stores_text_and_marks_looked(self):
+        conn = memdb()
+        edjoin.save_listings(conn, [row(1, positionTitle="Teacher"), row(2, positionTitle="Teacher")])
+        Fake([(200, DETAIL.read_bytes()), (200, b"<html>no block</html>")]).install(self)
+        self.assertEqual(edjoin.fetch_sites(conn, [1, 2]), 1)
+        got = dict(conn.execute("SELECT posting_id, location_raw FROM jobs"))
+        self.assertEqual(got, {1: "Theodore Judah Elementary", 2: ""})  # '' = looked, none listed
+
+
 class Fetch(unittest.TestCase):
     def test_query_has_all_19_params(self):
         q = edjoin._query(34, 31, 2)

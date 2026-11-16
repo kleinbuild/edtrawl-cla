@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS jobs (                  -- scraped listings
 CREATE TABLE IF NOT EXISTS name_matches (          -- cached matching decisions
   district_raw TEXT NOT NULL, location_raw TEXT NOT NULL DEFAULT '',
   district_code TEXT, cds_code TEXT,
-  method TEXT NOT NULL,                            -- 'exact' | 'fuzzy' | 'llm' | 'manual' | 'unsure'
+  method TEXT NOT NULL,                            -- exact | fuzzy | llm | manual | unsure | none (nothing close)
   score REAL, model TEXT, matched_on TEXT NOT NULL,
   PRIMARY KEY (district_raw, location_raw)
 );

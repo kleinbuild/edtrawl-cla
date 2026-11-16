@@ -36,7 +36,10 @@ class EdjoinError(Exception):
 
 
 class EdjoinRefused(EdjoinError):
-    """HTTP 403 or 429: the site said stop."""
+    """HTTP 403 or 429: the site said stop. `.status` says which, so the UI can word them differently."""
+    def __init__(self, status):
+        super().__init__(f"edjoin answered HTTP {status}")
+        self.status = status
 
 
 class EdjoinServerError(EdjoinError):
@@ -74,7 +77,7 @@ def _get(url):
     status, body = _http_get(url)
     _last[0] = time.monotonic()
     if status in (403, 429):
-        raise EdjoinRefused(f"edjoin answered HTTP {status}")
+        raise EdjoinRefused(status)
     if status != 200:
         raise EdjoinServerError(f"edjoin answered HTTP {status}")
     return body
@@ -107,18 +110,19 @@ def _parse_page(body):
 
 def fetch_listings(county_ids, days=31, limit=None, on_progress=None):
     """Rows (dicts as served) for these edjoin county ids, one request at a time."""
-    out = []
+    out, expected = [], 0  # expected: listings the counties visited so far say they hold, so progress is one running count
     for cid in county_ids:
         for page in range(1, MAX_PAGES + 1):
             rows, pages, total = _parse_page(_get(_query(cid, days, page)))
             out += rows
+            expected += total if page == 1 else 0
             if limit is not None and len(out) >= limit:
                 out = out[:limit]
                 if on_progress:
                     on_progress(len(out), limit, f"county {cid}")
                 return out
             if on_progress:
-                on_progress(len(out), total, f"county {cid}")
+                on_progress(len(out), expected, f"county {cid}")
             if page >= pages or not rows:
                 break
     return out
@@ -231,3 +235,17 @@ def parse_detail(html_text):
     m = re.search(r"Location\(s\):\s*</h[1-6]>\s*<div[^>]*>(.*?)</div>", html_text, re.S)
     text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]*>", " ", m[1]))).strip() if m else ""
     return text or None
+
+
+def fetch_sites(conn, posting_ids, on_progress=None):
+    """Read the posting page of each job and store its `Location(s):` text. Returns how many named a site.
+    location_raw: NULL = not looked yet, '' = looked and the posting names no site (so it is not fetched again)."""
+    found = 0
+    for i, pid in enumerate(posting_ids, 1):
+        site = fetch_detail(pid) or ""
+        conn.execute("UPDATE jobs SET location_raw = ? WHERE posting_id = ? AND location_raw IS NULL", (site, pid))
+        conn.commit()  # per posting: a refusal partway keeps what was already read
+        found += bool(site)
+        if on_progress:
+            on_progress(i, len(posting_ids), "details")
+    return found

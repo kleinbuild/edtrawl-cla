@@ -19,7 +19,7 @@ SAMPLE = dict(
     left=4, example="2295141", looked=23, kept=5, applied=2, start="Oct 30", date="Nov 12", status="kept",
     where="Roosevelt Middle", max=20, minutes=25, zip="93721", service="edjoin.org", url="https://www.edjoin.org/Home/JobPosting/2295141",
     id="2295141", path="edtrawl-error.log", choices="k, t, s, o, m, q", am="~22 min", pm="~26", week="about 4 hrs a week",
-    lo="~12", hi="~41", h="4.5", m=40, pct="+1%", day="Fri",
+    lo="~12", hi="~41", new=3, seen=12, h="4.5", m=40, pct="+1%", day="Fri",
 )
 
 SCHOOL_JOB = dict(

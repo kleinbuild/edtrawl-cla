@@ -52,7 +52,7 @@ class Geometry(unittest.TestCase):
 
     def test_estimate_and_rush(self):
         self.assertGreater(travel.estimate(10, "11 - City"), travel.estimate(1, "11 - City"))
-        self.assertGreater(travel.estimate(10, "11 - City"), travel.estimate(10, "43 - Rural"))
+        self.assertGreater(travel.estimate(10, "43 - Rural"), travel.estimate(10, "11 - City"))  # fitted: rural roads are less direct
         cfg = config.Config()
         self.assertAlmostEqual(travel.rush("Los Angeles", "am", cfg), 1 + 0.75 * 0.59)
         self.assertAlmostEqual(travel.rush("Modoc", "pm", cfg), 1 + 1.2 * 0.10)

@@ -18,8 +18,11 @@ BATCH = 50
 OSRM_PAUSE = 1.0  # public-server policy: at most one request per second
 
 # minutes = a + b * straight_miles, by first digit of the CDE Locale (1 City, 2 Suburban, 3 Town, 4 Rural).
-# GUESSES, not fitted (PLAN.md section 3 "Commute"); calibrate.py will replace them with fits against OSRM.
-COEFFS = {"1": (4.0, 2.0), "2": (4.0, 1.8), "3": (3.0, 1.6), "4": (3.0, 1.4)}
+# Fitted 2026-11-16 by calibrate.py on 2195 home-to-school pairs from 48 stand-in homes (60 homes, 2734 pairs in all,
+# schools within 20 straight miles); free-flow, before the rush factor. Median error on the 539 held-out pairs
+# (12 unseen homes): 2.4 min, 13%; 90th percentile 8.8 min, 37%. Per group, see `python3 calibrate.py --report`.
+# fitted against OpenStreetMap road times via OSRM; © OpenStreetMap contributors
+COEFFS = {"1": (4.08, 1.653), "2": (4.50, 1.782), "3": (1.60, 2.061), "4": (4.81, 1.899)}
 
 # FHWA Urban Congestion Report, July-September 2026, Travel Time Index (peak-period / free-flow), by metro area,
 # mapped to counties as in PLAN.md section 3. Counties not listed use TTI_DEFAULT, which is a GUESS.

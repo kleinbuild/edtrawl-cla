@@ -131,6 +131,12 @@ COPY = {
     "match_set_aside": (
         "Set aside: {n:listing|listings} I couldn't place at a school or district with "
         "confidence. To check by hand:\n    python edtrawl.py match --review"),
+    "fetch_done": "{new:new listing|new listings} saved, and {seen} I'd seen before.",
+    "search_header": "{n:job|jobs}, nearest drive first.",
+    "empty_filtered": "No jobs fit those filters. Try dropping one.",
+    "review_header": "{n:listing|listings} set aside. Under each are the closest names I found; 1.00 would be identical.",
+    "review_empty": "Nothing is set aside.",
+    "home_declined": "Nothing was sent. A ZIP code or a map position needs no geocoder:\n    python edtrawl.py home --zip 93721",
 
     # ── errors: what happened, whether anything is lost, the one next step ──
     "err_no_home": "There's no home set yet, so I can't measure any drives. This sets one up in a few steps:\n    python edtrawl.py",
@@ -141,6 +147,8 @@ COPY = {
     "err_geocoder_unreachable_setup": "The Census geocoder isn't answering, or this computer is offline. Nothing was saved. Try just your ZIP code; that needs no internet.",
     "err_outside_california": "That spot is outside California, and EdTrawl only knows California schools. Nothing was saved. Check the address, or try your ZIP code.",
     "err_unknown_zip": "I couldn't find any schools in ZIP {zip}, and I place a ZIP by its schools. Nothing was saved. Try a neighboring ZIP code or your street address.",
+    "err_file_not_found": "I couldn't find a file at {path}. Check the spelling and try again.",
+    "err_no_commutes": "There are no drive times yet, so I don't know which counties to look in. This works them out:\n    python edtrawl.py commute",
     "err_radius": "Type a number of miles from 1 to 100.",
     "err_minutes": "Type the minutes as a number from 1 to 240.",
     "err_schools_download": "I couldn't download the school list from data.ca.gov. Nothing is lost. Try again later, or save the file into the data folder yourself and run:\n    python edtrawl.py ingest --file data/schools_{year}.csv",
