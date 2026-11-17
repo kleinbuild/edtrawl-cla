@@ -122,7 +122,8 @@ def fetch_listings(county_ids, days=31, limit=None, on_progress=None):
                     on_progress(len(out), limit, f"county {cid}")
                 return out
             if on_progress:
-                on_progress(len(out), expected, f"county {cid}")
+                # the total is only known once the last county has answered; until then report a bare count
+                on_progress(len(out), expected if cid == county_ids[-1] else 0, f"county {cid}")
             if page >= pages or not rows:
                 break
     return out

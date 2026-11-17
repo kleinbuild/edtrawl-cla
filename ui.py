@@ -210,6 +210,15 @@ COPY = {
     "more_times": "Drive times assume arriving by 7:00 and leaving at 3:30 on a weekday. Later in the afternoon is usually slower.",
     "more_rush": "Afternoon traffic here builds fast; leaving after 4 can add a third or more.",
     "more_source": "School figures: California Department of Education, {year}.",
+
+    # ── flows: setup needs a terminal, picking among several schools, the interactive review ──
+    "setup_needs_terminal": "Setup asks a few questions, so it needs a terminal window to type in. Open one and run:\n    python edtrawl.py",
+    "school_not_found": "I couldn't find a school called \"{name}\". Check the spelling, or use the school's 14-digit code.",
+    "school_many": "Showing the first {n}. Add more of the name to narrow it down.",
+    "pick_prompt": "Type its number, or press Enter to skip.",
+    "review_option": "  [{n}] {name}  {score}",
+    "review_pick": "Type a number to choose one, n if none of these is right, or press Enter to skip.",
+    "review_saved": "Saved. That settles {n:listing|listings}.",
 }
 
 # CDE student-group and race/ethnicity columns, in CDE's published order. Shown as figures only: never

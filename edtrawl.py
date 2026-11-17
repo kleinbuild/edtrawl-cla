@@ -11,6 +11,7 @@ from pathlib import Path
 import config as config_mod
 import db
 import edjoin
+import flows
 import ingest as ingest_mod
 import query
 import travel
@@ -27,11 +28,19 @@ def prog(key):
 
 # ---- commands: each is cmd(args, conn, cfg) -> exit code (None = 0) ----
 
-def cmd_home(args, conn, cfg):
-    target = (args.target or "").strip()
-    zip_code = args.zip or (target if re.fullmatch(r"\d{5}", target) else None)
-    if args.zip and not re.fullmatch(r"\d{5}", args.zip):
-        return ui.say("err_home_unreadable") or 1
+class HomeProblem(Exception):
+    """Carries the COPY key to say, never what the user typed (it may be an address)."""
+    def __init__(self, key):
+        super().__init__(key)
+        self.key = key
+
+
+def locate(conn, target, zip_arg=None):
+    """(lat, lng, is_zip) from an address, ZIP or lat,lng. Raises HomeProblem; the address goes only to the geocoder."""
+    target = (target or "").strip()
+    zip_code = zip_arg or (target if re.fullmatch(r"\d{5}", target) else None)
+    if zip_arg and not re.fullmatch(r"\d{5}", zip_arg):
+        raise HomeProblem("err_home_unreadable")
     if zip_code:
         lat, lng = travel.zip_centroid(conn, zip_code)
     elif m := LATLNG.fullmatch(target):
@@ -39,16 +48,24 @@ def cmd_home(args, conn, cfg):
     elif len(target) >= 5 and re.search(r"\d", target):
         # Consent first. Not on a terminal nobody can answer, and typing the address on the command line is the ask.
         if ui.ask("geocode_notice", choices="yn", default="y") != "y":
-            return ui.say("home_declined") or 1
+            raise HomeProblem("home_declined")
         found = travel.geocode(target)  # the one use of the address; it is never stored, logged or echoed
         if found is None:
-            return ui.say("err_address_not_found") or 1
+            raise HomeProblem("err_address_not_found")
         lat, lng = found
     else:
-        return ui.say("err_home_unreadable") or 1
+        raise HomeProblem("err_home_unreadable")
+    return lat, lng, bool(zip_code)
+
+
+def cmd_home(args, conn, cfg):
+    try:
+        lat, lng, is_zip = locate(conn, args.target, args.zip)
+    except HomeProblem as p:
+        return ui.say(p.key) or 1
     travel.set_home(conn, cfg, lat, lng, args.config)
     ui.say("home_saved")
-    if zip_code:
+    if is_zip:
         ui.say("home_zip_note")
 
 
@@ -93,7 +110,8 @@ def cmd_fetch(args, conn, cfg):
         ids = edjoin.county_ids_in_range(conn, cfg)
         if not ids:
             return ui.say("err_no_commutes") or 1
-        ui.say("edjoin_notice")
+        if not conn.execute("SELECT 1 FROM jobs LIMIT 1").fetchone():
+            ui.say("edjoin_notice")  # once, before the first cast; repeating it every day would be noise
         rows = edjoin.fetch_listings(ids, args.days, args.limit, on_progress=prog("progress_fetch"))
         new, seen = edjoin.save_listings(conn, rows)
     ui.say("fetch_done", new=new, seen=seen)
@@ -112,14 +130,20 @@ def _match_notes(result, cfg):
         ui.say("match_set_aside", n=result["unsure"])
 
 
+def pair_line(r):
+    place = " · ".join(x for x in (ui.clean(r["district_raw"]), ui.clean(r["location_raw"])) if x)
+    return f"{place}  ({ui.count(r['jobs'], 'job')})"
+
+
 def cmd_match(args, conn, cfg):
     import match
     if args.review:
+        if ui.CAPS["interactive"]:
+            return flows.review(conn, cfg)
         pairs = match.review(conn)
         ui.say("review_header", n=sum(r["jobs"] for r in pairs)) if pairs else ui.say("review_empty")
         for r in pairs:
-            place = " · ".join(x for x in (ui.clean(r["district_raw"]), ui.clean(r["location_raw"])) if x)
-            ui.show(f"{place}  ({ui.count(r['jobs'], 'job')})")
+            ui.show(pair_line(r))
             for code, name, score in r["candidates"][:3]:
                 ui.show(f"    {ui.clean(code)}  {ui.clean(name)}  {score:.2f}")
         return
@@ -148,8 +172,14 @@ def cmd_search(args, conn, cfg):
         ui.say("empty_none_near", radius=cfg.radius_miles)
 
 
+flows.cli = sys.modules[__name__]  # flows reuses cmd_ingest, cmd_fetch, locate; set here so it works run as a script too
+
 COMMANDS = {"home": cmd_home, "ingest": cmd_ingest, "commute": cmd_commute, "fetch": cmd_fetch,
-            "match": cmd_match, "search": cmd_search}  # the next wave adds setup, go, school, keepers, ... here
+            "match": cmd_match, "search": cmd_search,
+            "setup": flows.setup, "go": flows.go, "school": flows.school, "keepers": flows.keepers,
+            "applied": flows.applied, "logbook": flows.logbook, "drove": flows.drove,
+            # "chart": another agent adds cmd_chart here and a parser entry below
+            }
 
 
 # ---- parser ----
@@ -189,6 +219,19 @@ def build_parser():
     p.add_argument("--status", choices=("kept", "tossed", "applied"))
     p.add_argument("--new", action="store_true", help="only jobs you haven't marked")
     p.add_argument("--limit", type=int, default=50)
+    add("setup", help="first-time setup (safe to run again)")
+    add("go", help="today's session: fetch what's new, then keep or toss each job")
+    p = add("school", help="facts about one school")
+    p.add_argument("name", nargs="+", help="school name or 14-digit CDS code")
+    add("keepers", help="jobs you kept, soonest deadline first")
+    p = add("applied", help="note that you applied for a job")
+    p.add_argument("posting", type=int, help="the job's number, from keepers")
+    add("logbook", help="what you've looked at, kept and applied for")
+    p = add("drove", help="tell me a drive you know, to fit every estimate")
+    p.add_argument("school", help="school name or 14-digit CDS code")
+    p.add_argument("minutes", type=float, help="door-to-door minutes")
+    p.add_argument("--pm", action="store_true", help="it was the afternoon drive home")
+    # chart: parser entry goes here
     return top
 
 
@@ -218,7 +261,7 @@ def _speak(e, args):
         return "err_edjoin_down", {}
     if isinstance(e, (urllib.error.URLError, ConnectionError, TimeoutError, socket.gaierror)):
         # not every OSError: a missing --file is the user's typo, not the network
-        return "err_offline", {"service": {"ingest": "data.ca.gov", "fetch": "edjoin.org"}.get(args.command, "the internet")}
+        return "err_offline", {"service": {"ingest": "data.ca.gov", "fetch": "edjoin.org", "go": "edjoin.org"}.get(args.command, "the internet")}
     return None
 
 
@@ -236,9 +279,7 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     ui.configure(plain=args.plain, no_emoji=args.no_emoji)
-    if not args.command:
-        parser.print_help()  # the guided flow replaces this
-        return 0
+    args.command = args.command or "go"  # bare `python edtrawl.py`: go, which runs setup when there is no home
     conn = None
     try:
         cfg = config_mod.load(args.config)

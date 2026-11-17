@@ -77,9 +77,10 @@ class CliTest(unittest.TestCase):
 
     # ---- the commands ----
 
-    def test_no_command_prints_help(self):
-        self.assertEqual(self.run_cli(), 0)
-        self.assertIn("usage", self.out.getvalue())
+    def test_no_command_is_go_and_go_without_home_needs_a_terminal(self):
+        with mock.patch.object(sys, "stdin", io.StringIO()):  # not a terminal, whatever runs the tests
+            self.assertEqual(self.run_cli(), 1)
+        self.assertEqual(self.names(), ["setup_needs_terminal"])
 
     def test_ingest_file(self):
         self.assertEqual(self.run_cli("ingest", "--file", CDE), 0)
