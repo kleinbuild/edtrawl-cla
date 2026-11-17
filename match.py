@@ -34,6 +34,11 @@ GENERIC = LEVEL | {
     "childhood", "community", "day", "continuation", "alternative", "opportunity", "preschool", "center",
     "learning", "college", "career", "technical", "technology", "home", "hospital", "county", "office", "of",
     "department", "services", "academy", "charter", "and", "for", "k", "8", "12", "tk", "new", "valley"}
+# Last words of a stem that name a place, not a person: "Valley Oak" must not match "Oak Elementary".
+GEO = {"oak", "oaks", "view", "park", "hills", "hill", "creek", "vista", "ranch", "lake", "lakes", "river", "grove",
+       "heights", "canyon", "ridge", "springs", "meadows", "woods", "pines", "point", "mesa", "glen", "island",
+       "gardens", "terrace", "avenue", "street", "road", "way", "north", "south", "east", "west", "central",
+       "mountain", "field", "farm", "bay", "beach", "village", "estates", "acres", "trail", "crest", "harbor"}
 FLOOR = 0.75     # below this the best candidate is not close at all: unmatched, no model call
 MAX_CANDIDATES = 15
 LLM_TIMEOUT = 60  # seconds; a local model's first call includes loading it
@@ -61,6 +66,8 @@ def _variants(name, noise=NOISE):
     stem = list(full)
     while stem and stem[-1] in LEVEL:
         stem.pop()
+    if len(stem) > 2 and stem[-1].isdigit() and (stem[-2] in ("k", "tk") or stem[-2].isdigit()):
+        stem = stem[:-2]  # a grade span: "Westmore Oaks K-8" is listed as "Westmore Oaks"
     return [v for v in (full, stem if stem != full else []) if v]  # full name first
 
 
@@ -88,10 +95,11 @@ def decide(ranked, accept, margin):
     return None, None
 
 
-def find_in_text(text, candidates, stems=True, place=""):
+def find_in_text(text, candidates, stems=True, place="", surnames=False):
     """Step 0: the one candidate whose name (or stem) appears in text as whole words, or None.
     Several hits resolve only when one hit's span contains all the others ("Coalinga High" over "Coalinga").
-    A stem made only of words of `place` (the district's name) is skipped: "Livermore" names the town."""
+    A stem made only of words of `place` (the district's and its towns' names) is skipped: "Livermore" names the town.
+    With `surnames` (inside one district only), "Cooley Middle" also finds CDE "Robert C. Cooley Middle"."""
     padded = " " + " ".join(_words(text, STEP0_NOISE)) + " "
     place = set(_words(place, STEP0_NOISE))
     hits = {}
@@ -103,10 +111,36 @@ def find_in_text(text, candidates, stems=True, place=""):
             i = padded.find(" " + phrase + " ")
             if i >= 0 and (code not in hits or len(phrase) > hits[code][1] - hits[code][0]):
                 hits[code] = (i, i + len(phrase))  # keep each school's longest hit
+    if surnames:
+        hits.update(_surname_hits(padded, candidates, place, hits))
     # Drop hits lying strictly inside another hit; identical spans (shared stem) stay and block each other.
     outer = [c for c, (a, b) in hits.items()
              if not any(oa <= a and b <= ob and (oa, ob) != (a, b) for oa, ob in hits.values())]
     return outer[0] if len(outer) == 1 else None
+
+
+def _surname_hits(padded, candidates, place, hits):
+    """Schools whose last stem word, after given names and initials, appears directly followed by the
+    school's own level word(s): "Dudley Elementary" for "Arthur S. Dudley Elementary". A bare surname
+    ("Teacher - Earhart") never counts: in real titles it is as often a program or a person as a school.
+    Text already covered by a full-name or stem hit belongs to that hit (step 0 keeps priority)."""
+    out = {}
+    for code, name in candidates:
+        words = _words(name, STEP0_NOISE)
+        n = len(words)
+        while n and words[n - 1] in LEVEL:
+            n -= 1
+        stem, level = words[:n], words[n:]
+        if len(stem) < 2 or not level or code in hits:  # nothing dropped, so the stem rule already covers it
+            continue
+        last = stem[-1]
+        if len(last) < 4 or last.isdigit() or last in GENERIC | GEO | place:
+            continue
+        phrase = " ".join([last] + level)
+        i = padded.find(" " + phrase + " ")
+        if i >= 0 and not any(a <= i + 1 and i + len(phrase) <= b for a, b in hits.values()):
+            out[code] = (i, i + len(phrase))  # two schools with the same surname and level share a span and block
+    return out
 
 
 # ---- the model: the only function that talks to one ----
@@ -272,8 +306,10 @@ def _match_one(conn, cfg, state, job):
         if manual and manual["method"] == "manual":
             cds = manual["cds_code"]
         else:
-            place = conn.execute("SELECT MAX(district_name) FROM schools WHERE district_code = ?", (dist,)).fetchone()[0]
-            cds = find_in_text(text, schools, place=f"{place} {d}")
+            place = " ".join(r[0] or "" for r in conn.execute(  # the district's name and its schools' towns
+                "SELECT DISTINCT district_name FROM schools WHERE district_code = ? UNION "
+                "SELECT DISTINCT city FROM schools WHERE district_code = ?", (dist, dist)))
+            cds = find_in_text(text, schools, place=f"{place} {d}", surnames=True)
             # A site text made only of generic words ("Special Education", "Middle School") is not ranked.
             if not cds and loc and not set(_words(loc)) <= GENERIC:
                 method, _, cds = _resolve_name(conn, cfg, state, d, loc, loc, schools, dist)

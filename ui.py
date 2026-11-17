@@ -36,9 +36,7 @@ COPY = {
         "    a street address    123 Main St, Fresno\n"
         "    a ZIP code          93721\n"
         "    a map position      36.74,-119.79"),
-    "geocode_notice": (
-        "To find that address I'll send it once to the US Census Bureau's free geocoder "
-        "(geocoding.geo.census.gov). Nothing else goes with it, and it isn't saved. Send it? [y/n]"),
+    "geocode_notice": "To find that address I'll send it once to the US Census Bureau's free geocoder (geocoding.geo.census.gov). Nothing else goes with it, and it isn't saved. Type y or n; Enter means yes.",
     "home_saved": "Home is set.",
     "home_zip_note": (
         "A ZIP code puts home at the middle of that ZIP's schools, which can be a mile or two off, "
@@ -47,26 +45,19 @@ COPY = {
     "radius_ask": "How many miles from home should I look, as the crow flies? Press Enter for {default}.",
     "reveal": "Within {radius} miles of home, as the crow flies: {schools:public school|public schools} in {districts:district|districts}.",
     "reveal_nearest": "The nearest is {school}, about {miles} miles away.",
-    "reveal_none": "There are no public schools within {radius} miles of that spot. Try a wider radius, like {wider}.",
-    "routing_ask": (
-        "How should I work out drive times?\n"
-        "  [o]ffline: a formula on straight-line distance. Nothing leaves this computer, but it "
-        "can't see bays, mountains or freeways.\n"
-        "  [r]oads: real road distances from a free OpenStreetMap routing server ({server}). It "
-        "receives your home spot, rounded to about a city block, and the positions of schools "
-        "near you. Nothing else.\n"
-        "Both add typical rush-hour traffic, and both are estimates. Offline or roads? [o/r]"),
-    "routing_saved_offline": "Drive times will be worked out offline. You can switch to roads later in config.toml.",
-    "routing_saved_roads": "Drive times will use roads. You can switch to offline later in config.toml.",
+    "reveal_none": 'There are no public schools within {radius} miles of that spot. To look farther, try a bigger radius:\n    python edtrawl.py radius {wider}\nIf home is in the wrong place, set it again, with your own address or ZIP code in place of the words:\n    python edtrawl.py home "your address or ZIP code"',
+    "routing_ask": "How should I work out drive times?\n  [o]ffline: a formula on straight-line distance. Nothing leaves this computer, but it can't see bays, mountains or freeways.\n  [r]oads: real road distances from a free OpenStreetMap routing server ({server}). It receives your home spot, rounded to about a city block, and the positions of schools near you. Nothing else.\nBoth add typical rush-hour traffic, and both are estimates. Type o or r; Enter means offline.",
+    "routing_saved_offline": 'Drive times are ready for {n:school|schools}, worked out offline. To use road distances instead:\n    python edtrawl.py routing roads',
+    "routing_saved_roads": 'Drive times are ready for {n:school|schools}, from road distances. To go back to offline:\n    python edtrawl.py routing offline',
     "known_drive_ask": (
         "Is there a school you drive to now, or used to? Its real morning drive time lets me fit "
         "every estimate to your roads. Type the school's name, or press Enter to skip."),
     "known_drive_which": "More than one school matches \"{name}\". Which one?",
     "known_drive_option": "  [{n}] {school}, {city}",
     "known_drive_not_found": "I couldn't find a school called \"{name}\" near home. Check the spelling, or press Enter to skip.",
-    "known_drive_minutes": "About how many minutes is the morning drive to {school}, door to door?",
-    "drove_adjusted_am": "Thanks. I've scaled every morning estimate to match: the typical school near you went from ~{before} to ~{after} min.",
-    "drove_adjusted_pm": "Thanks. I've scaled every afternoon estimate to match: the typical school near you went from ~{before} to ~{after} min.",
+    "known_drive_minutes": 'About how many minutes is the morning drive to {school}, door to door? Press Enter to skip.',
+    "drove_adjusted_am": "For {school} you said {minutes} min, and I'd estimated ~{est}. I've scaled every morning estimate by the same amount, so the typical school near you went from ~{before} to ~{after} min.",
+    "drove_adjusted_pm": "For {school} you said {minutes} min, and I'd estimated ~{est}. I've scaled every afternoon estimate by the same amount, so the typical school near you went from ~{before} to ~{after} min.",
     "drove_unchanged": "Thanks. My estimate for that drive was already close, so nothing needed to change.",
     "drove_clamped": (
         "That's far from my estimate, so I adjusted as far as I allow (half or double). If that "
@@ -86,12 +77,12 @@ COPY = {
 
     # ── the daily loop ──
     "welcome_back": "Welcome back. {n:new job|new jobs} since {since}.",
-    "catch_intro": "{n:new job|new jobs} within range, nearest first.",
+    "catch_intro": '{n:new job|new jobs} within range, nearest first, ten at a time. Enter skips a card; q stops and keeps your place.',
     "keepers_closed": "Since you last looked, {n:keeper has|keepers have} closed. The keepers list marks which.",
-    "triage_keys": "[k]eep   [t]oss   [s]kip   [o]pen posting   [m]ore about the school   [q]uit",
-    "triage_keys_short": "[k]eep [t]oss [s]kip [o]pen [m]ore [q]uit",
-    "triage_keys_district": "[k]eep   [t]oss   [s]kip   [o]pen posting   [q]uit",
-    "triage_keys_district_short": "[k]eep [t]oss [s]kip [o]pen [q]uit",
+    "triage_keys": '[k]eep   [t]oss   [s]kip   [b]ack   [o]pen   [m]ore about the school   [q]uit',
+    "triage_keys_short": '[k]eep [t]oss [s]kip [b]ack [o]pen [m]ore [q]uit',
+    "triage_keys_district": '[k]eep   [t]oss   [s]kip   [b]ack   [o]pen posting   [q]uit',
+    "triage_keys_district_short": '[k]eep [t]oss [s]kip [b]ack [o]pen [q]uit',
     "kept": "Kept.",
     "tossed": "Tossed.",
     "skipped": "Skipped. It'll come up again next time.",
@@ -128,9 +119,7 @@ COPY = {
     "empty_in_range": "Nothing within {max} minutes today.",
     "empty_nearly": "{n:job opens|jobs open} up at {minutes} minutes:\n    python edtrawl.py search --max-commute {minutes}",
     "empty_none_near": "No teaching jobs are posted within {radius} miles right now. To look again another day:\n    python edtrawl.py",
-    "match_set_aside": (
-        "Set aside: {n:listing|listings} I couldn't place at a school or district with "
-        "confidence. To check by hand:\n    python edtrawl.py match --review"),
+    "match_set_aside": "{n:listing|listings} didn't clearly match a school or district, so I set those aside instead of guessing. Nothing is lost. To place them yourself:\n    python edtrawl.py match --review",
     "fetch_done": "{new:new listing|new listings} saved, and {seen} I'd seen before.",
     "search_header": "{n:job|jobs}, nearest drive first.",
     "search_header_more": "The nearest {n:job|jobs}. There are more: add --limit and a bigger number to see them.",
@@ -139,28 +128,28 @@ COPY = {
     "empty_filtered": "No jobs fit those filters. Try dropping one.",
     "review_header": "{n:listing|listings} set aside. Under each are the closest names I found; 1.00 would be identical.",
     "review_empty": "Nothing is set aside.",
-    "home_declined": "Nothing was sent. A ZIP code or a map position needs no geocoder:\n    python edtrawl.py home --zip 93721",
+    "home_declined": 'Nothing was sent. A ZIP code or a map position needs no geocoder. Put your own ZIP code in place of 93721:\n    python edtrawl.py home --zip 93721',
 
     # ── errors: what happened, whether anything is lost, the one next step ──
     "err_no_home": "There's no home set yet, so I can't measure any drives. This sets one up in a few steps:\n    python edtrawl.py",
     "err_home_unreadable": "I couldn't read that as an address, ZIP code or map position. A ZIP code is five digits, like 93721; a map position looks like 36.74,-119.79.",
-    "err_address_not_found": "I couldn't place that address, so nothing was saved. Your ZIP code works too, and needs no internet:\n    python edtrawl.py home --zip 93721",
+    "err_address_not_found": "I couldn't place that address, so nothing was saved. Your ZIP code works too, and needs no internet. Put your own in place of 93721:\n    python edtrawl.py home --zip 93721",
     "err_address_not_found_setup": "I couldn't place that address, so nothing was saved. Try just your ZIP code; that needs no internet.",
-    "err_geocoder_unreachable": "The Census geocoder isn't answering, or this computer is offline. Nothing was saved. Your ZIP code works without the internet:\n    python edtrawl.py home --zip 93721",
+    "err_geocoder_unreachable": "The Census geocoder isn't answering, or this computer is offline. Nothing was saved. Your ZIP code works without the internet. Put your own in place of 93721:\n    python edtrawl.py home --zip 93721",
     "err_geocoder_unreachable_setup": "The Census geocoder isn't answering, or this computer is offline. Nothing was saved. Try just your ZIP code; that needs no internet.",
     "err_outside_california": "That spot is outside California, and EdTrawl only knows California schools. Nothing was saved. Check the address, or try your ZIP code.",
-    "err_unknown_zip": "I couldn't find any schools in ZIP {zip}, and I place a ZIP by its schools. Nothing was saved. Try a neighboring ZIP code or your street address.",
+    "err_unknown_zip": "I couldn't find any California schools in ZIP {zip}, and I place a ZIP by its schools, so it has to be a California ZIP code. Nothing was saved. Try a neighboring ZIP code or your street address.",
     "err_file_not_found": "I couldn't find a file at {path}. Check the spelling and try again.",
     "err_no_commutes": "There are no drive times yet, so I don't know which counties to look in. This works them out:\n    python edtrawl.py commute",
     "err_radius": "Type a number of miles from 1 to 100.",
     "err_minutes": "Type the minutes as a number from 1 to 240.",
-    "err_schools_download": "I couldn't download the school list from data.ca.gov. Nothing is lost. Try again later, or save the file into the data folder yourself and run:\n    python edtrawl.py ingest --file data/schools_{year}.csv",
+    "err_schools_download": "The state's data site (data.ca.gov) didn't answer, so the school list isn't loaded. Nothing is lost. Try again in a few minutes:\n    python edtrawl.py ingest --year {year}",
     "err_routing_unreachable": "The road-distance server isn't answering. Your saved drive times still work, and I'll use them; a school without one shows no drive time until the server is back. To try again later:\n    python edtrawl.py",
-    "err_routing_unreachable_setup": "The road-distance server isn't answering right now. Nothing is lost. Choose offline for now; you can switch to roads later in config.toml.",
+    "err_routing_unreachable_setup": "The road-distance server isn't answering right now. Nothing is lost. Choose offline for now; you can switch later with:\n    python edtrawl.py routing roads",
     "err_edjoin_refused": "edjoin.org turned the request away, so I stopped. Nothing you've already saved is lost. Try again tomorrow:\n    python edtrawl.py",
     "err_edjoin_busy": "edjoin.org asked me to slow down, so I stopped for now. Nothing you've already saved is lost. Try again in a few hours:\n    python edtrawl.py",
     "err_edjoin_down": "edjoin.org isn't working properly right now, so I stopped. Nothing you've already saved is lost. Try again later today:\n    python edtrawl.py",
-    "err_offline": "This computer doesn't seem to be online, so I couldn't reach {service}. Your keepers and saved drive times are all still here. Once you're connected:\n    python edtrawl.py",
+    "err_offline": "This computer doesn't seem to be online, so I couldn't reach {service}. Nothing you've saved has changed. Once you're connected:\n    python edtrawl.py",
     "err_llm_unreachable": "The matching model at {url} didn't answer, so matching ran without it. Nothing is lost; anything it would have helped with is in the review list:\n    python edtrawl.py match --review",
     "err_unknown_posting": "I don't have a job numbered {id}. Each keeper's number is at the start of its line here:\n    python edtrawl.py keepers",
     "err_open_browser": "I couldn't open a browser from here. The posting is at:\n    {url}",
@@ -219,12 +208,46 @@ COPY = {
 
     # ── flows: setup needs a terminal, picking among several schools, the interactive review ──
     "setup_needs_terminal": "Setup asks a few questions, so it needs a terminal window to type in. Open one and run:\n    python edtrawl.py",
-    "school_not_found": "I couldn't find a school called \"{name}\". Check the spelling, or use the school's 14-digit code.",
+    "school_not_found": "I couldn't find a school called \"{name}\". Check the spelling, or try just part of the name.",
+    "err_school_usage": "Tell me which school, like this:\n    python edtrawl.py school \"Lincoln Elementary, Fresno\"",
     "school_many": "Showing the first {n}. Add more of the name to narrow it down.",
     "pick_prompt": "Type its number, or press Enter to skip.",
     "review_option": "  [{n}] {name}  {score}",
     "review_pick": "Type a number to choose one, n if none of these is right, or press Enter to skip.",
     "review_saved": "Saved. That settles {n:listing|listings}.",
+    # ── fix round: hands of ten, back, by-number marks, resuming, settings, plainer errors ──
+    "catch_intro_few": "{n:new job|new jobs} within range, nearest first. Enter skips a card; q stops and keeps your place.",
+    "triage_hand": "That's {done} of {total}: {tally}.\nGo on with the next {next}? Type y to keep going; Enter stops here.",
+    "triage_pause": "Good place to stop: {tally}. The other {left:job|jobs} will be here next time.",
+    "triage_end_offline": "That's everything I had saved: {tally}. I'll check for new jobs next time you're online.",
+    "back_done": "Back one card. Whatever you chose on it is undone.",
+    "back_first": "This is the first card, so there's nothing before it.",
+    "fetch_offline": "I couldn't check for new jobs, because this computer doesn't seem to be online. Here are the ones I'd already saved.",
+    "marked_kept": "Marked as kept: {title}.",
+    "marked_tossed": "Marked as tossed: {title}.",
+    "already_applied": "You'd already marked this one as applied: {title}.",
+    "err_posting_number": "That doesn't look like a job's number. It's the first thing on each line of a list, like 2295141. Nothing was changed. To see a list:\n    python edtrawl.py search",
+    "err_drove_usage": "I need a school and the minutes, like this:\n    python edtrawl.py drove \"Lincoln Elementary, Fresno\" 30\nAdd --pm if it was the afternoon drive home.",
+    "err_routing_word": "Say which one, roads or offline, like this:\n    python edtrawl.py routing offline",
+    "err_routing_switch": "The road-distance server isn't answering, so I kept your current setting. Nothing is lost. Try again in a few minutes, or work offline:\n    python edtrawl.py routing offline",
+    "err_routing_unreachable_none": "The road-distance server isn't answering, and there are no drive times saved for this home yet. Nothing is lost. To work offline instead:\n    python edtrawl.py routing offline",
+    "reveal_none_setup": "There are no public schools within {radius} miles of that spot. Try a bigger number below, up to 100. If home is in the wrong place, stop here and set it again, with your own address or ZIP code in place of the words:\n    python edtrawl.py home \"your address or ZIP code\"",
+    "reveal_none_max": "There are no public schools within {radius} miles of that spot, which is as far as I look. If home is in the wrong place, set it again, with your own address or ZIP code in place of the words:\n    python edtrawl.py home \"your address or ZIP code\"",
+    "reveal_nearest_here": "The nearest is {school}, less than a tenth of a mile away.",
+    "home_declined_setup": "Nothing was sent. A ZIP code or a map position needs no geocoder.",
+    "err_config_unknown": "I couldn't read {path}: it has a setting called \"{setting}\" that I don't know. Nothing was changed. Remove that line in a text editor, or delete the file. Deleting it is safe: your jobs and marks are kept in the database.",
+    "err_config_value": "I couldn't read {path}: the setting \"{setting}\" has a value I can't use. Nothing was changed. Fix that line in a text editor, or delete the file. Deleting it is safe: your jobs and marks are kept in the database.",
+    "err_config_broken": "I couldn't read {path}: it isn't written in the form I expect{where}. Nothing was changed. Fix that line in a text editor, or delete the file. Deleting it is safe: your jobs and marks are kept in the database.",
+    "err_db_unreadable": "I couldn't read {path}, the file that holds your jobs and marks, so I stopped. To start again, move that file somewhere else and run the command below. The school files in the data folder aren't touched.\n    python edtrawl.py",
+    "err_db_busy": "Another EdTrawl window seems to be busy. Nothing was changed. Try again in a minute.",
+    "err_unexpected_nolog": "Something unexpected went wrong, so I stopped. I couldn't keep a note of the details here.",
+    "no_listings_yet": "I haven't fetched any job listings yet, so there's nothing to show. To fetch them:\n    python edtrawl.py",
+    "school_list_missing": "The school list isn't loaded yet, so I can't look up schools. This loads it:\n    python edtrawl.py ingest",
+    "school_ambiguous": "That could be more than one school, so nothing was changed. Add more of the name, or the city after a comma, like this:\n    python edtrawl.py {example}",
+    "pick_again": "Type a number from 1 to {n}, or press Enter to skip.",
+    "review_again": "Type a number from 1 to {n}, n if none of these is right, or press Enter to skip.",
+    "drove_out_of_range": "{school} is outside the {radius} miles I'm looking, so I have no drive time for it to fit. To look farther:\n    python edtrawl.py radius {wider}",
+    "title_missing": "(no title)",
 }
 
 # CDE student-group and race/ethnicity columns, in CDE's published order. Shown as figures only: never
@@ -320,12 +343,18 @@ class _Blank(dict):
         return ""
 
 
+def launcher():
+    """The name to type in front of edtrawl.py: many Macs and Linux machines only have python3."""
+    return "python" if shutil.which("python") else "python3"
+
+
 def text(key, **values):
-    """COPY[key] filled in. String values are cleaned; `{n:one|many}` gives "1 one" / "3 many"."""
+    """COPY[key] filled in. String values are cleaned; `{n:one|many}` gives "1 one" / "3 many".
+    Commands in COPY are written `python edtrawl.py`; the launcher that exists here replaces `python`."""
     values = {k: clean(v) if isinstance(v, str) else v for k, v in values.items()}
     template = _PLURAL.sub(lambda m: count(values.get(m.group(1)), m.group(2), m.group(3))
                            .replace("{", "{{").replace("}", "}}"), COPY[key])
-    return template.format_map(_Blank(values))
+    return template.format_map(_Blank(values)).replace("python edtrawl.py", launcher() + " edtrawl.py")
 
 
 def count(n, noun, plural=None):
@@ -520,7 +549,7 @@ def job_card(row, i, n, width=None, today=None):
     row = dict(row)
     w = (width or CAPS["width"]) - 1  # leave the last column empty so no terminal wraps early
     lines = [_accent(_rule(f"{i} of {n}", deadline(row.get("deadline"), today), w))]
-    title = textwrap.wrap(clean(row.get("title")), w - 1, break_on_hyphens=False) or [""]
+    title = textwrap.wrap(clean(row.get("title")) or text("title_missing"), w - 1, break_on_hyphens=False) or [""]
     lines += [_paint(" " + l, "1") for l in _clip(title, 2, w - 1)]
     school = clean(row.get("school_name")) if row.get("cds_code") else ""
     where = " · ".join(x for x in (school or text("site_not_listed"),
@@ -605,7 +634,7 @@ def table(rows, width=None, today=None):
                   else _short(d) if d > today else text("table_closed"))
         where = clean(row.get("school_name")) if row.get("cds_code") else ""
         where = where or clean(row.get("district_name")) or clean(row.get("district_raw"))
-        job = clean(row.get("title")) + (" · " + where if where else "")
+        job = (clean(row.get("title")) or text("title_missing")) + (" · " + where if where else "")
         line = f" {row.get('posting_id', ''):<8} {_table_drive(row):<8} {closes:<8} {job}"
         lines.append(line if len(line) <= w else line[:w - 3].rstrip() + "...")
     return "\n".join(lines)
@@ -627,7 +656,15 @@ def progress(done, total, label):
     counted = f"{done:,} of {total:,}" if total else f"{done:,}"
     boat = "⛵" if CAPS["emoji"] else "\\_/"  # the emoji is two columns wide, the ASCII hull three
     w = CAPS["width"] - 1
-    track = max(4, min(28, w - len(name) - len(counted) - 8))
+    track = min(28, w - len(name) - len(counted) - 8)
+    if track < 4:  # too narrow for the boat: name and count only, so the line still fits and can redraw
+        sys.stdout.write("\r" + f" {name[:max(0, w - len(counted) - 3)]}  {counted}".ljust(w))
+        if final:
+            sys.stdout.write("\n")
+            _progress_open[1] = 0.0
+        sys.stdout.flush()
+        _progress_open[0] = not final
+        return
     pos = round(min(done / total, 1) * track) if total else done % (track + 1)
     water = "·" if CAPS["utf8"] else "."
     plain = f" {name}  {'~' * pos}{boat}{water * (track - pos)}  {counted}"
@@ -639,9 +676,16 @@ def progress(done, total, label):
     _progress_open[0] = not final
 
 
-def ask(key, choices=None, default=None, **values):
-    """Show COPY[key] and read one line. With `choices` (e.g. "ktsomq") return the first letter typed,
-    asking again on anything else. Enter gives `default`. Never blocks when stdin is not a terminal."""
+WORDS = {"k": "keep", "t": "toss", "s": "skip", "o": "open", "m": "more", "b": "back", "q": "quit",
+         "y": "yes", "n": "no"}  # a lettered choice may also be typed as its whole word
+_UNSET = object()
+
+
+def ask(key, choices=None, default=None, words=None, eof=_UNSET, **values):
+    """Show COPY[key] and read one line. With `choices` (e.g. "ktsomq") return the letter chosen: exactly one
+    letter or that letter's whole word (WORDS, overridden by `words`), any case, spaces ignored. Anything else,
+    "ok" or "thanks" included, asks again. Enter gives `default`. At end of input returns `eof` (default: `default`)
+    so a caller can tell nobody is there. Never blocks when stdin is not a terminal."""
     if not CAPS["interactive"]:
         return default
     w = CAPS["width"]
@@ -649,15 +693,18 @@ def ask(key, choices=None, default=None, **values):
     if key + "_short" in COPY and max(map(len, s.split("\n"))) > w - 1:
         s = text(key + "_short", **values)
     _show(_wrap(s, w))
+    names = {**WORDS, **(words or {})}
     while True:
         try:
             answer = input(" > ").strip()
         except EOFError:
-            return default
+            return default if eof is _UNSET else eof
         if not choices:
             return answer or default
         if not answer and default is not None:
             return default
-        if answer and answer[0].lower() in choices:
-            return answer[0].lower()
+        low = answer.lower()
+        for letter in choices:
+            if low == letter or low == names.get(letter):
+                return letter
         say("ask_again", choices=", ".join(choices))

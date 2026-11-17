@@ -164,6 +164,12 @@ class Fetch(unittest.TestCase):
         self.assertTrue(0 < fake.sleeps[0] <= edjoin.DELAY)
         self.assertEqual(seen[-1][0], 2)
 
+    def test_rows_already_downloaded_ride_on_the_exception(self):
+        Fake([(200, page([row(1), row(2)], pages=3)), (503, b"")]).install(self)
+        with self.assertRaises(edjoin.EdjoinServerError) as cm:
+            edjoin.fetch_listings([34])
+        self.assertEqual([r["postingID"] for r in cm.exception.partial_rows], [1, 2])
+
     def test_delay_between_counties_too(self):
         fake = Fake([(200, page([row(1)])), (200, page([row(2)]))]).install(self)
         edjoin.fetch_listings([34, 58])

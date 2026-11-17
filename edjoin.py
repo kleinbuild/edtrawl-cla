@@ -109,23 +109,27 @@ def _parse_page(body):
 
 
 def fetch_listings(county_ids, days=31, limit=None, on_progress=None):
-    """Rows (dicts as served) for these edjoin county ids, one request at a time."""
+    """Rows (dicts as served) for these edjoin county ids, one request at a time.
+    If a later page fails, the exception carries what was already downloaded as `.partial_rows`."""
     out, expected = [], 0  # expected: listings the counties visited so far say they hold, so progress is one running count
-    for cid in county_ids:
-        for page in range(1, MAX_PAGES + 1):
-            rows, pages, total = _parse_page(_get(_query(cid, days, page)))
-            out += rows
-            expected += total if page == 1 else 0
-            if limit is not None and len(out) >= limit:
-                out = out[:limit]
+    try:
+        for cid in county_ids:
+            for page in range(1, MAX_PAGES + 1):
+                rows, pages, total = _parse_page(_get(_query(cid, days, page)))
+                out += rows
+                expected += total if page == 1 else 0
+                if limit is not None and len(out) >= limit:
+                    out = out[:limit]
+                    if on_progress:
+                        on_progress(len(out), limit, f"county {cid}")
+                    return out
                 if on_progress:
-                    on_progress(len(out), limit, f"county {cid}")
-                return out
-            if on_progress:
-                # the total is only known once the last county has answered; until then report a bare count
-                on_progress(len(out), expected if cid == county_ids[-1] else 0, f"county {cid}")
-            if page >= pages or not rows:
-                break
+                    on_progress(len(out), expected, f"county {cid}")
+                if page >= pages or not rows:
+                    break
+    except Exception as e:
+        e.partial_rows = out  # so the caller can save them before reporting the problem
+        raise
     return out
 
 

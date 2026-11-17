@@ -294,5 +294,53 @@ class PickTest(unittest.TestCase):
                 match.pick("x", self.CANDS, self.cfg())
 
 
+class SurnameTest(unittest.TestCase):
+    """Listings drop given names: "Cooley Middle" is CDE "Robert C. Cooley Middle". Real cases from 2026-11-16."""
+    ROSE = "3166928"
+
+    def setUp(self):
+        self.conn = db.connect(":memory:")
+        db.init_db(self.conn)
+        c, r = self.conn, self.ROSE
+        for i, name in enumerate(["Robert C. Cooley Middle", "Arthur S. Dudley Elementary", "Bay Farm",
+                                  "Amelia Earhart Elementary", "John Smith Elementary", "Mary Smith Elementary",
+                                  "Valley Oak Elementary", "George Roseville Elementary", "Ann Placer Elementary",
+                                  "Westmore Oaks K-8", "Jones Elementary", "Linda Jones Elementary", "Thomas Jefferson"]):
+            school(c, r + f"{6000000 + i}", "Roseville City", name, county="Placer")
+        c.execute("UPDATE schools SET city = 'Placer Hills'")
+        self.n = 0
+
+    def place(self, title, location_raw=None):
+        self.n += 1
+        job(self.conn, self.n, title, "Roseville City School District (Preschool to 8th Grade)", location_raw, county="Placer")
+        match.match_jobs(self.conn, config.Config())
+        code = linked(self.conn, self.n)[1]
+        return code and self.conn.execute("SELECT school_name FROM schools WHERE cds_code = ?", (code,)).fetchone()[0]
+
+    def test_surname_with_matching_level_word(self):
+        self.assertEqual(self.place("Spanish Teacher - Cooley Middle School - 2026/2027"), "Robert C. Cooley Middle")
+        self.assertEqual(self.place("Special Education Teacher", "Dudley Elementary"), "Arthur S. Dudley Elementary")
+        self.assertEqual(self.place("Teacher @ Dudley ELEM-12"), "Arthur S. Dudley Elementary")
+
+    def test_bare_surname_or_other_level_is_not_enough(self):
+        self.assertIsNone(self.place("SPED Teacher - Earhart (1.0 FTE) 2026/27 SY"))
+        self.assertIsNone(self.place("Teacher - Cooley Elementary"))
+        self.assertIsNone(self.place("Teacher - Dudley Middle School"))
+        self.assertIsNone(self.place("Teacher - Jefferson (0.5 FTE)"))  # CDE "Thomas Jefferson" has no level word
+
+    def test_shared_surname_place_names_and_generic_words_do_not_fire(self):
+        self.assertIsNone(self.place("Teacher - Smith Elementary"))       # two Smith elementaries
+        self.assertIsNone(self.place("Teacher - Roseville Elementary"))   # the district's own name
+        self.assertIsNone(self.place("Teacher - Placer Elementary"))      # the schools' town
+        self.assertIsNone(self.place("Teacher - Oak Elementary"))         # "Valley Oak" is a place, not a person
+
+    def test_step_0_keeps_priority_and_two_schools_block(self):
+        self.assertEqual(self.place("Teacher - Jones Elementary"), "Jones Elementary")  # exact name wins
+        self.assertIsNone(self.place("SPED Teacher - Bay Farm/Earhart Elementary (1.0 FTE)"))  # a job at two schools
+
+    def test_grade_span_is_dropped_from_the_stem(self):
+        self.assertEqual(self.place("2026-2027 Intervention Specialist- Westmore Oaks"), "Westmore Oaks K-8")
+
+
 if __name__ == "__main__":
     unittest.main()

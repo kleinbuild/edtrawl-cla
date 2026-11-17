@@ -1,5 +1,6 @@
 import contextlib
 import io
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -26,6 +27,7 @@ class FakeMatch:
     """Stands in for match.py, which another agent writes."""
     def __init__(self, unsure=0, detail=()):
         self.calls, self.detail, self.unsure = [], list(detail), unsure
+        self.aside = 2  # listings currently set aside, as review() reports them
 
     def match_jobs(self, conn, cfg, limit=None, on_progress=None):
         self.calls.append("match_jobs")
@@ -35,7 +37,7 @@ class FakeMatch:
         return self.detail
 
     def review(self, conn):
-        return [{"district_raw": "Odd USD", "location_raw": "Odd Site", "jobs": 2,
+        return [{"district_raw": "Odd USD", "location_raw": "Odd Site", "jobs": self.aside,
                  "candidates": [("0123456", "Odd Unified", 0.8), ("0123457", "Even Unified", 0.7)]}]
 
 
@@ -164,11 +166,34 @@ class CliTest(unittest.TestCase):
         rows = edjoin._parse_page(Path(LISTING).read_bytes())[0]
         with mock.patch.object(edjoin, "fetch_listings", lambda ids, days, limit, on_progress: order.append(("list", days, limit)) or rows), \
                 mock.patch.object(edjoin, "fetch_sites", lambda conn, ids, on_progress: order.append(("sites", ids)) or 1):
-            self.match.match_jobs = lambda *a, **k: order.append("match") or {"unsure": 2, "llm_failed": True}
+            self.match.aside = 0  # nothing set aside before this run; the run sets 2 aside
+            self.match.match_jobs = lambda *a, **k: order.append("match") or setattr(self.match, "aside", 2) or {"unsure": 2, "llm_failed": True}
             self.assertEqual(self.run_cli("fetch", "--days", "7", "--limit", "5"), 0)
         self.assertEqual(order, [("list", 7, 5), "match", ("sites", [7]), "match"])
         self.assertGreater(self.q("SELECT COUNT(*) FROM jobs")[0][0], 0)
         self.assertEqual(self.names(), ["edjoin_notice", "fetch_done", "err_llm_unreachable", "match_set_aside"])
+
+    def test_set_aside_is_announced_only_when_it_grew(self):
+        self.prepared()
+        self.match.unsure = 2  # two set aside, the same two as yesterday
+        with mock.patch.object(edjoin, "fetch_listings", lambda *a, **k: edjoin._parse_page(Path(LISTING).read_bytes())[0]):
+            self.run_cli("fetch")
+        self.assertNotIn("match_set_aside", self.names())
+        self.run_cli("match")  # asking for it by name always answers
+        self.assertIn("match_set_aside", self.names())
+
+    def test_partial_rows_are_saved_before_the_problem_is_reported(self):
+        self.prepared()
+        rows = edjoin._parse_page(Path(LISTING).read_bytes())[0][:3]
+        err = edjoin.EdjoinServerError("edjoin answered HTTP 503")
+        err.partial_rows = rows
+
+        def failing(*a, **k):
+            raise err
+        with mock.patch.object(edjoin, "fetch_listings", failing):
+            self.assertEqual(self.run_cli("fetch"), 1)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM jobs"), [(3,)])
+        self.assertEqual(self.names()[-1], "err_edjoin_down")
 
     def test_fetch_without_home(self):
         self.assertEqual(self.run_cli("fetch", "--from-file", LISTING), 1)
@@ -209,7 +234,7 @@ class CliTest(unittest.TestCase):
     def test_mapped_exceptions(self):
         cases = [
             (travel.GeocoderUnavailable("x"), "err_geocoder_unreachable"),
-            (travel.RoutingUnavailable("x"), "err_routing_unreachable"),
+            (travel.RoutingUnavailable("x"), "err_routing_unreachable_none"),  # no saved drive times in this empty database
             (travel.OutsideCalifornia("x"), "err_outside_california"),
             (travel.UnknownZip("x"), "err_unknown_zip"),
             (travel.NoHome("x"), "err_no_home"),
@@ -244,6 +269,38 @@ class CliTest(unittest.TestCase):
         self.assertNotIn("10th St", log)
         self.assertNotIn("Traceback", self.out.getvalue() + self.err.getvalue())
         self.assertIn("edtrawl-error.log", self.keys[0][1]["path"])
+
+    def test_log_that_cannot_be_written_gives_one_plain_line(self):
+        self.assertIsNone(edtrawl._log_unexpected(RuntimeError("x"), "/proc/no/such/dir/t.db"))
+        with mock.patch.object(travel, "update_commutes", side_effect=RuntimeError), \
+                mock.patch.object(edtrawl, "_log_unexpected", lambda e, p: None):
+            self.assertEqual(self.run_cli("commute"), 1)
+        self.assertEqual(self.names(), ["err_unexpected_nolog"])
+        self.assertNotIn("log", ui.COPY["err_unexpected_nolog"].replace("a note of", ""))
+
+    def test_settings_file_problems_each_get_their_own_message(self):
+        cases = [("bogus = 1\n", "err_config_unknown", "bogus"),
+                 ('routing = "google"\n', "err_config_value", "routing"),
+                 ('radius_miles = "far"\n', "err_config_value", "radius_miles"),
+                 ("radius_miles = = 3\n", "err_config_broken", None)]
+        for text, key, setting in cases:
+            Path(self.cfg).write_text(text)
+            self.assertEqual(self.run_cli("logbook"), 1, text)
+            self.assertEqual(self.names(), [key], text)
+            self.assertEqual(self.keys[0][1]["path"], self.cfg)
+            if setting:
+                self.assertEqual(self.keys[0][1]["setting"], setting)
+            else:
+                self.assertIn("line 1", self.keys[0][1]["where"])
+        self.assertFalse((self.tmp / "edtrawl-error.log").exists())
+
+    def test_unreadable_and_locked_databases(self):
+        Path(self.db).write_bytes(b"this is not a database" * 100)
+        self.assertEqual(self.run_cli("logbook"), 1)
+        self.assertEqual(self.names(), ["err_db_unreadable"])
+        args = SimpleNamespace(db="x.db")
+        self.assertEqual(edtrawl._speak(sqlite3.OperationalError("database is locked"), args)[0], "err_db_busy")
+        self.assertIsNone(edtrawl._speak(sqlite3.OperationalError("no such column: x"), args))
 
     def test_missing_file_is_not_called_offline(self):
         self.assertEqual(self.run_cli("ingest", "--file", str(self.tmp / "nope.csv")), 1)

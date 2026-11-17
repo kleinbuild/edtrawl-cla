@@ -19,7 +19,7 @@ SAMPLE = dict(
     left=4, example="2295141", looked=23, kept=5, applied=2, start="Oct 30", date="Nov 12", status="kept",
     where="Roosevelt Middle", max=20, minutes=25, zip="93721", service="edjoin.org", url="https://www.edjoin.org/Home/JobPosting/2295141",
     id="2295141", path="edtrawl-error.log", choices="k, t, s, o, m, q", am="~22 min", pm="~26", week="about 4 hrs a week",
-    lo="~12", hi="~41", score="0.84", new=3, seen=12, h="4.5", m=40, pct="+1%", day="Fri",
+    lo="~12", hi="~41", score="0.84", done=10, next=10, est=22, setting="routing", new=3, seen=12, h="4.5", m=40, pct="+1%", day="Fri",
 )
 
 SCHOOL_JOB = dict(
@@ -241,9 +241,44 @@ class Renderers(unittest.TestCase):
 
     def test_say_wraps_but_leaves_commands_whole(self):
         ui.CAPS.update(color=False, width=60, utf8=True)
-        out, _ = captured(ui.say, "err_address_not_found")
+        with mock.patch.object(ui, "launcher", lambda: "python"):
+            out, _ = captured(ui.say, "err_address_not_found")
         self.assertTrue(all(len(l) < 60 for l in out.splitlines()))
         self.assertIn("    python edtrawl.py home --zip 93721\n", out)
+
+    def test_launcher_is_python3_when_python_is_missing(self):
+        with mock.patch("shutil.which", lambda name: None):
+            self.assertEqual(ui.launcher(), "python3")
+            self.assertIn("    python3 edtrawl.py home --zip 93721", ui.text("home_declined"))
+        with mock.patch("shutil.which", lambda name: "/usr/bin/python"):
+            self.assertEqual(ui.launcher(), "python")
+            self.assertIn("    python edtrawl.py home --zip 93721", ui.text("home_declined"))
+
+    def test_ask_takes_one_letter_or_the_whole_word_and_nothing_else(self):
+        ui.CAPS.update(interactive=True, color=False)
+        with mock.patch("builtins.input", side_effect=["ok", "thanks", " QUIT ", ]):
+            out, answer = captured(ui.ask, "triage_keys", "ktsobmq", default="s")
+        self.assertEqual(answer, "q")  # "ok" and "thanks" were refused, not read as o or t
+        self.assertEqual(out.count("Type one of these letters"), 2)
+        with mock.patch("builtins.input", side_effect=["Offline"]):
+            self.assertEqual(captured(ui.ask, "routing_ask", "or", "o", words={"o": "offline", "r": "roads"}, server="x")[1], "o")
+
+    def test_ask_tells_the_caller_input_ended(self):
+        ui.CAPS.update(interactive=True, color=False)
+        with mock.patch("builtins.input", side_effect=EOFError):
+            self.assertEqual(captured(ui.ask, "triage_keys", "ktsobmq", default="s", eof="q")[1], "q")
+
+    def test_progress_on_a_narrow_terminal_drops_the_boat(self):
+        ui.CAPS.update(tty=True, color=False, width=40, utf8=True, emoji=False)
+        out, _ = captured(ui.progress, 10, 40, "progress_details")
+        line = out.strip("\r\n")
+        self.assertLess(len(line), 40)
+        self.assertIn("10 of 40", line)
+        self.assertNotIn("\\_/", line)
+
+    def test_empty_title_gets_a_placeholder(self):
+        card = ui.job_card(dict(SCHOOL_JOB, title=""), 1, 1, width=80, today=TODAY)
+        self.assertIn("(no title)", card)
 
     def test_ascii_terminal_gets_ascii(self):
         ui.CAPS.update(color=False, utf8=False, encoding="ascii")

@@ -1,5 +1,7 @@
 import builtins
 import contextlib
+import os
+import urllib.error
 import io
 import sqlite3
 import sys
@@ -36,6 +38,7 @@ class Base(unittest.TestCase):
         self.keys = iter(())
         self.tty = True
         for p in (mock.patch.object(builtins, "input", self.fake_input),
+                  mock.patch.object(ui, "launcher", lambda: "python"),
                   mock.patch.object(edtrawl, "DATA", self.tmp / "data"),
                   mock.patch.object(ingest, "download", self.download),
                   mock.patch.object(travel, "geocode", self.geocode),
@@ -80,6 +83,17 @@ class Base(unittest.TestCase):
             return [tuple(r) for r in conn.execute(sql, a)]
         finally:
             conn.close()
+
+    def add_jobs(self, n):
+        """n more unmarked jobs at the nearby Washington school, to fill several hands."""
+        conn = sqlite3.connect(self.db)
+        code = conn.execute("SELECT cds_code FROM schools WHERE school_name LIKE 'Washington%'").fetchone()[0]
+        for i in range(n):
+            conn.execute("INSERT INTO jobs (posting_id, title, district_raw, district_code, cds_code, url, first_seen, "
+                         "last_seen) VALUES (?, ?, 'x', ?, ?, ?, '2026-11-16', '2026-11-16')",
+                         (9000 + i, f"Extra {i}", code[:7], code, f"https://www.edjoin.org/Home/JobPosting/{9000 + i}"))
+        conn.commit()
+        conn.close()
 
     def first_run(self, *keys):
         return self.run_cli(keys=("95814", "", "", "") + keys)  # ZIP, radius 20, offline, skip the known drive
@@ -286,7 +300,7 @@ class SmallCommands(Base):
         before = self.q("SELECT factor_am FROM homes")[0][0]
         self.assertEqual(self.run_cli("drove", "Washington", "30"), 0)
         self.assertNotEqual(self.q("SELECT factor_am FROM homes")[0][0], before)
-        self.assertRegex(self.flat, r"every morning estimate to match: the typical school near you went from ~\d+ to ~\d+ min")
+        self.assertRegex(self.flat, r"you said 30 min, and I'd estimated ~\d+. I've scaled every morning estimate by the same amount, so the typical school near you went from ~\d+ to ~\d+ min")
         self.assertEqual(self.q("SELECT direction, minutes FROM known_drives"), [("am", 30.0)])
 
     def test_drove_pm_clamped_and_unchanged_and_bad_minutes(self):
@@ -315,6 +329,302 @@ class SmallCommands(Base):
         self.assertIn("Saved. That settles 1 listing.", self.out)
         self.assertEqual(self.q("SELECT method FROM name_matches WHERE district_raw = 'Sacramento Cty Unfd'"), [("manual",)])
         self.assertTrue(self.q("SELECT district_code FROM jobs WHERE posting_id = 1")[0][0])
+
+
+class DeckRound2(Base):
+    """Hands of ten, the back key, strict input, end of input, offline sessions."""
+    def setUp(self):
+        super().setUp()
+        self.first_run("q")
+        self.add_jobs(12)  # 6 + 12 = 18 cards: two hands
+
+    def test_hands_of_ten_with_a_pause_and_a_proper_stop(self):
+        self.run_cli("go", keys=["s"] * 10 + [""])  # Enter at the hand boundary stops
+        self.assertIn("ten at a time. Enter skips a card; q stops and keeps your place.", self.flat)
+        self.assertIn("That's 10 of 18: skipped 10. Go on with the next 8?", self.flat)
+        self.assertIn("Good place to stop: skipped 10. The other 8 jobs will be here next time.", self.flat)
+        self.assertNotIn("whole catch", self.out)
+        self.assertNotIn("11 of 18", self.out)
+        self.run_cli("go", keys=["s"] * 10 + ["y"] + ["s"] * 8)  # two full hands, then the real end
+        self.assertIn("18 of 18", self.out)
+        self.assertIn("That's the whole catch: skipped 18.", self.flat)
+
+    def test_back_undoes_the_mark_and_the_tally(self):
+        self.run_cli("go", keys=["k", "b", "t", "q"])
+        self.assertEqual(self.out.count(" 1 of 18"), 2)  # card one came back
+        self.assertIn("Back one card. Whatever you chose on it is undone.", self.flat)
+        self.assertEqual(self.q("SELECT status FROM job_marks"), [("tossed",)])
+        self.assertIn("Stopping here: tossed 1.", self.flat)
+
+    def test_back_on_the_first_card_does_nothing_surprising(self):
+        self.run_cli("go", keys=["b", "q"])
+        self.assertIn("This is the first card", self.out)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM job_marks"), [(0,)])
+
+    def test_back_is_on_both_key_lines_and_they_fit(self):
+        for key in ("triage_keys", "triage_keys_district"):
+            self.assertIn("[b]ack", ui.COPY[key])
+            self.assertIn("[b]ack", ui.COPY[key + "_short"])
+        self.assertLessEqual(max(len(l) for k in ("triage_keys", "triage_keys_district") for l in ui.COPY[k].split("\n")), 79)
+
+    def test_only_a_letter_or_the_whole_word_acts(self):
+        self.run_cli("go", keys=["ok", "thanks", "x", "Open", " QUIT "])
+        self.assertEqual(len(self.opened), 1)  # "ok" did not open, "Open" did
+        self.assertEqual(self.out.count("Type one of these letters"), 3)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM job_marks"), [(0,)])  # "thanks" did not toss
+
+    def test_end_of_input_takes_the_quit_path(self):
+        self.run_cli("go", keys=["k"])  # one answer, then the input closes
+        self.assertIn("Stopping here: kept 1. The other 17 jobs will be here next time.", self.flat)
+        self.assertNotIn("whole catch", self.out)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM job_marks"), [(1,)])
+
+    def test_offline_with_saved_jobs_goes_on_to_the_deck(self):
+        with mock.patch.object(edjoin, "fetch_listings", side_effect=urllib.error.URLError("down")):
+            self.run_cli("go", keys=["k"] * 2 + ["q"])
+        self.assertEqual(self.out.count("couldn't check for new jobs"), 1)
+        self.assertIn("1 of 18", self.out)
+        with mock.patch.object(edjoin, "fetch_listings", side_effect=urllib.error.URLError("down")):
+            self.run_cli("go", keys=["s"] * 10 + ["y"] + ["s"] * 8)
+        self.assertIn("That's everything I had saved", self.flat)
+
+    def test_offline_with_nothing_saved_stops_without_mentioning_keepers(self):
+        conn = sqlite3.connect(self.db)
+        conn.execute("DELETE FROM job_marks")
+        conn.execute("DELETE FROM jobs")
+        conn.commit()
+        conn.close()
+        with mock.patch.object(edjoin, "fetch_listings", side_effect=urllib.error.URLError("down")):
+            self.assertEqual(self.run_cli("go"), 1)
+        self.assertIn("doesn't seem to be online", self.out)
+        self.assertNotIn("keeper", self.out)
+        self.assertNotIn("couldn't check for new jobs", self.out)
+
+    def test_enter_means_is_said_in_each_question(self):
+        self.assertIn("Enter means offline", ui.COPY["routing_ask"])
+        self.assertIn("Enter means yes", ui.COPY["geocode_notice"])
+        self.assertIn("Enter to skip", ui.COPY["known_drive_ask"])
+        self.assertIn("Enter to skip", ui.COPY["known_drive_minutes"])
+        self.assertIn("Enter for {default}", ui.COPY["radius_ask"])
+
+
+class Resume(Base):
+    def test_interrupted_setup_resumes_at_the_first_unfinished_step(self):
+        self.assertEqual(self.run_cli(keys=("95814",)), 1)  # input ends at the radius question
+        self.assertTrue(config.load(self.cfg).home_key)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM commutes"), [(0,)])
+        self.assertEqual(self.run_cli(keys=("", "", "")), 0)  # bare command: asked again, not silently offline
+        self.assertIn("How many miles from home", self.out)
+        self.assertIn("How should I work out drive times?", self.out)
+        self.assertNotIn("Step 1", self.out)
+        self.assertGreater(self.q("SELECT COUNT(*) FROM commutes")[0][0], 0)
+
+
+class Settings(Base):
+    def setUp(self):
+        super().setUp()
+        self.first_run("q")
+
+    def test_radius_command(self):
+        self.assertEqual(self.run_cli("radius", "5"), 0)
+        self.assertEqual(config.load(self.cfg).radius_miles, 5)
+        self.assertIn("Within 5 miles of home", self.out)
+        self.assertEqual(self.run_cli("radius", "500"), 1)
+        self.assertIn("from 1 to 100", self.out)
+        self.assertEqual(self.run_cli("radius", "abc"), 1)
+        self.assertEqual(self.run_cli("radius"), 1)
+
+    def test_routing_roads_then_offline(self):
+        with mock.patch.object(travel, "osrm", lambda home, part, cfg: [(10.0, 12.0)] * len(part)):
+            self.assertEqual(self.run_cli("routing", "roads"), 0)
+        self.assertEqual(config.load(self.cfg).routing, "osrm")
+        self.assertIn("from road distances. To go back to offline:", self.flat)
+        self.assertEqual(self.q("SELECT DISTINCT provider FROM commutes"), [("osrm",)])
+        self.assertEqual(self.run_cli("routing", "offline"), 0)
+        self.assertEqual(config.load(self.cfg).routing, "estimate")
+        self.assertEqual(self.q("SELECT DISTINCT provider FROM commutes"), [("estimate",)])
+        self.assertIn("worked out offline. To use road distances instead:", self.flat)
+
+    def test_routing_roads_with_the_server_down_keeps_the_old_setting(self):
+        with mock.patch.object(travel, "osrm", side_effect=travel.RoutingUnavailable("x")):
+            self.assertEqual(self.run_cli("routing", "roads"), 1)
+        self.assertEqual(config.load(self.cfg).routing, "estimate")
+        self.assertIn("kept your current setting", self.flat)
+        self.assertIn("routing offline", self.out)
+        self.assertEqual(self.run_cli("routing", "sideways"), 1)
+        self.assertIn("roads or offline", self.out)
+
+    def test_no_message_tells_anyone_to_edit_config_toml_or_use_a_code(self):
+        everything = "\n".join(ui.COPY.values())
+        self.assertNotIn("config.toml", everything)
+        self.assertNotIn("14-digit", everything)
+        self.assertNotIn("CDS", everything)
+
+    def test_a_spot_with_no_school_gives_a_next_step_and_the_suggestion_is_capped(self):
+        self.assertEqual(self.run_cli("home", "32.6,-124.4"), 0)  # the ocean, inside the bounding box
+        self.assertIn("Home is set.", self.out)
+        self.assertIn("    python edtrawl.py radius 40", self.out)
+        self.assertIn("home \"your address or ZIP code\"", self.out)
+        self.assertIn("radius 100", ui.text("reveal_none", radius=60, wider=100))
+        self.assertNotIn("radius 200", ui.text("reveal_none_max", radius=100, wider=100))
+        self.assertIn("as far as I look", ui.text("reveal_none_max", radius=100, wider=100))
+
+    def test_setup_says_drive_times_only_after_working_them_out(self):
+        self.tmp2 = Path(tempfile.mkdtemp())
+        self.db, self.cfg = str(self.tmp2 / "t.db"), str(self.tmp2 / "c.toml")
+        with mock.patch.object(travel, "osrm", side_effect=travel.RoutingUnavailable("x")):
+            self.run_cli(keys=("95814", "", "r", "o", ""))
+        order = [self.out.index(t) for t in ("isn't answering right now", "worked out offline")]
+        self.assertEqual(order, sorted(order))
+        self.assertNotIn("will use roads", self.out)
+        self.assertNotIn("config.toml", self.out)
+
+    def test_server_down_with_and_without_saved_drive_times(self):
+        config.set("routing", "osrm", self.cfg)
+        self.tty = False
+        with mock.patch.object(travel, "osrm", side_effect=travel.RoutingUnavailable("x")):
+            self.run_cli("go")
+            self.assertIn("saved drive times still work", self.flat)
+            conn = sqlite3.connect(self.db)
+            conn.execute("DELETE FROM commutes")
+            conn.commit()
+            conn.close()
+            self.assertEqual(self.run_cli("go"), 1)
+        self.assertIn("no drive times saved for this home yet", self.flat)
+        self.assertNotIn("still work", self.out)
+        self.assertIn("routing offline", self.out)
+
+    def test_zip_wording_and_setup_decline(self):
+        for key in ("home_declined", "err_address_not_found", "err_geocoder_unreachable"):
+            self.assertIn("own", ui.COPY[key])
+            self.assertIn("in place of 93721", ui.COPY[key])
+        self.assertNotIn("python", ui.COPY["home_declined_setup"])
+        self.assertIn("California", ui.COPY["err_unknown_zip"])
+
+    def test_nearest_never_says_zero_miles(self):
+        self.assertNotIn("0.0 miles", self.out)
+        self.assertIn("less than a tenth of a mile away", self.out)
+
+
+class Commands(Base):
+    def setUp(self):
+        super().setUp()
+        self.first_run(*"kkkkkk")
+
+    def test_keep_and_toss_by_number_and_unknown_number(self):
+        pid = self.q("SELECT MIN(posting_id) FROM job_marks")[0][0]
+        self.assertEqual(self.run_cli("toss", str(pid)), 0)
+        self.assertEqual(self.q("SELECT status FROM job_marks WHERE posting_id = ?", pid), [("tossed",)])
+        self.assertIn("Marked as tossed:", self.out)
+        self.run_cli("keep", str(pid))
+        self.assertEqual(self.q("SELECT status FROM job_marks WHERE posting_id = ?", pid), [("kept",)])
+        self.assertEqual(self.run_cli("keep", "12"), 1)
+        self.assertIn("I don't have a job numbered 12.", self.out)
+        self.assertEqual(self.run_cli("keep", "abc"), 1)
+        self.assertIn("doesn't look like a job's number", self.out)
+        self.assertNotIn("usage:", self.out)
+
+    def test_applied_twice_and_bad_numbers(self):
+        pid = self.q("SELECT MIN(posting_id) FROM job_marks")[0][0]
+        self.run_cli("applied", str(pid))
+        self.run_cli("applied", str(pid))
+        self.assertIn("You'd already marked this one as applied", self.out)
+        self.assertNotIn("Marked as applied", self.out)
+        for argv in (("applied", "abc"), ("applied",)):
+            self.assertEqual(self.run_cli(*argv), 1)
+            self.assertIn("doesn't look like a job's number", self.out)
+
+    def test_keepers_hint_uses_a_keeper_that_is_still_open(self):
+        first = self.q("SELECT posting_id FROM jobs WHERE posting_id IN (SELECT posting_id FROM job_marks) "
+                       "ORDER BY deadline LIMIT 1")[0][0]
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE jobs SET deadline = '2020-01-01' WHERE posting_id = ?", (first,))
+        conn.commit()
+        conn.close()
+        self.run_cli("keepers")
+        self.assertNotIn(f"applied {first}", self.out)
+        self.assertRegex(self.out, r"applied \d+")
+
+    def test_school_and_drove_take_name_comma_city_as_listed(self):
+        self.assertEqual(self.run_cli("school", "Washington", "Elementary,", "Sacramento"), 0)
+        self.assertIn("Students", self.out)
+        self.assertEqual(self.run_cli("drove", "Washington Elementary, Sacramento", "30"), 0)
+        self.assertIn("For Washington Elementary you said 30 min", self.flat)
+        self.assertEqual(self.run_cli("school", "Washington Elementary, Nowhere"), 1)
+
+    def test_several_matches_with_nobody_to_ask_or_a_bad_number(self):
+        self.tty = False
+        self.assertEqual(self.run_cli("drove", "Elementary", "30"), 1)
+        self.assertIn("nothing was changed", self.flat)
+        self.assertIn('drove "Lincoln Elementary, Fresno" 30', self.out)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM known_drives"), [(0,)])
+        self.tty = True
+        self.run_cli("school", "Elementary", keys=("0", "x", "2"))
+        self.assertEqual(self.out.count("Type a number from 1 to"), 2)  # re-asked on each bad answer
+        self.assertIn("Grades", self.out)
+
+    def test_drove_for_a_school_out_of_range(self):
+        name = self.q("SELECT school_name FROM schools WHERE cds_code NOT IN (SELECT cds_code FROM commutes) "
+                      "AND school_name NOT IN (SELECT school_name FROM schools GROUP BY school_name HAVING COUNT(*) > 1) "
+                      "LIMIT 1")[0][0]
+        self.assertEqual(self.run_cli("drove", name, "30"), 1)
+        self.assertIn("is outside the 20 miles I'm looking", self.flat)
+        self.assertNotIn("couldn't find", self.out)
+
+    def test_drove_missing_or_wrong_arguments_get_our_words(self):
+        for argv in (("drove",), ("drove", "Washington"), ("drove", "Washington", "soon")):
+            self.run_cli(*argv)
+            self.assertNotIn("usage:", self.out)
+            self.assertTrue("Type the minutes" in self.out or "I need a school and the minutes" in self.out)
+
+    def test_logbook_continuation_lines_are_indented(self):
+        self.run_cli("logbook")
+        lines = self.out.splitlines()
+        entries = [i for i, l in enumerate(lines) if l.startswith("Nov ")]
+        self.assertTrue(entries)
+        for l in lines[entries[0]:]:
+            self.assertTrue(l.startswith("Nov ") or l.startswith("  "), l)
+
+    def test_deleted_config_adopts_the_home_the_database_remembers(self):
+        home = config.load(self.cfg).home_key
+        os.remove(self.cfg)
+        self.run_cli("keepers")
+        self.assertIn("Keepers: 6 jobs", self.out)
+        self.assertEqual(config.load(self.cfg).home_key, home)
+
+
+class NothingFetchedYet(Base):
+    def test_search_keepers_and_school_do_not_report_searches_that_never_happened(self):
+        self.assertEqual(self.run_cli("school", "Lincoln"), 1)
+        self.assertIn("school list isn't loaded yet", self.flat)
+        self.assertNotIn("couldn't find", self.out)
+        self.run_cli(keys=("95814", "", "", "", "q"))  # set up fully, then quit
+        conn = sqlite3.connect(self.db)
+        conn.execute("DELETE FROM job_marks")
+        conn.execute("DELETE FROM jobs")
+        conn.commit()
+        conn.close()
+        for cmd in ("search", "keepers"):
+            self.run_cli(cmd)
+            self.assertIn("haven't fetched any job listings yet", self.flat, cmd)
+            self.assertNotIn("No teaching jobs are posted", self.out)
+
+
+class Review(Base):
+    def test_an_unrecognised_answer_asks_again_and_a_choice_is_stored(self):
+        self.first_run("q")
+        conn = sqlite3.connect(self.db)
+        conn.execute("INSERT INTO jobs (posting_id, title, district_raw, county, url, first_seen, last_seen) "
+                     "VALUES (1, 'Teacher', 'Sacramento Cty Unfd', 'Sacramento', 'https://www.edjoin.org/Home/JobPosting/1', "
+                     "'2026-11-16', '2026-11-16')")
+        conn.execute("DELETE FROM name_matches WHERE district_raw = 'Sacramento Cty Unfd'")
+        conn.execute("INSERT INTO name_matches (district_raw, location_raw, method, matched_on) "
+                     "VALUES ('Sacramento Cty Unfd', '', 'unsure', '2026-11-16')")
+        conn.commit()
+        conn.close()
+        self.run_cli("match", "--review", keys=("banana", "1"))
+        self.assertIn("Type a number from 1 to", self.out)
+        self.assertEqual(self.q("SELECT method FROM name_matches WHERE district_raw = 'Sacramento Cty Unfd'"), [("manual",)])
 
 
 if __name__ == "__main__":

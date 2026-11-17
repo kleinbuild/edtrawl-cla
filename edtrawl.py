@@ -2,7 +2,9 @@
 import argparse
 import re
 import socket
+import sqlite3
 import sys
+import tomllib
 import traceback
 import urllib.error
 from datetime import datetime
@@ -18,6 +20,7 @@ import travel
 import ui
 
 DATA = Path(ingest_mod.__file__).with_name("data")
+OFFLINE = (urllib.error.URLError, ConnectionError, TimeoutError, socket.gaierror)  # "this computer can't reach it"
 LATLNG = re.compile(r"\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*")
 
 
@@ -67,6 +70,8 @@ def cmd_home(args, conn, cfg):
     ui.say("home_saved")
     if is_zip:
         ui.say("home_zip_note")
+    if conn.execute("SELECT 1 FROM schools LIMIT 1").fetchone() and not travel.schools_in_radius(conn, cfg):
+        flows.say_none(cfg.radius_miles)  # a spot with no school near it is a dead end unless we say what to do
 
 
 def cmd_ingest(args, conn, cfg):
@@ -90,9 +95,13 @@ def cmd_ingest(args, conn, cfg):
 
 
 def cmd_commute(args, conn, cfg):
-    r = travel.update_commutes(conn, cfg, on_progress=prog("progress_drives"))
+    try:
+        r = travel.update_commutes(conn, cfg, on_progress=prog("progress_drives"))
+    except travel.RoutingUnavailable:
+        flows.routing_down(conn, cfg)
+        return 1
     if not r["in_range"]:
-        return ui.say("reveal_none", radius=cfg.radius_miles, wider=cfg.radius_miles * 2) or 1
+        return flows.say_none(cfg.radius_miles) or 1
     ui.say("drives_ready", n=r["in_range"])
     if cfg.routing == "osrm":
         ui.say("attribution_osm")
@@ -112,21 +121,32 @@ def cmd_fetch(args, conn, cfg):
             return ui.say("err_no_commutes") or 1
         if not conn.execute("SELECT 1 FROM jobs LIMIT 1").fetchone():
             ui.say("edjoin_notice")  # once, before the first cast; repeating it every day would be noise
-        rows = edjoin.fetch_listings(ids, args.days, args.limit, on_progress=prog("progress_fetch"))
+        try:
+            rows = edjoin.fetch_listings(ids, args.days, args.limit, on_progress=prog("progress_fetch"))
+        except Exception as e:
+            if getattr(e, "partial_rows", None):  # pages already downloaded are kept before the problem is reported
+                edjoin.save_listings(conn, e.partial_rows)
+            raise
         new, seen = edjoin.save_listings(conn, rows)
     ui.say("fetch_done", new=new, seen=seen)
+    before = _set_aside(match, conn)
     result = match.match_jobs(conn, cfg, on_progress=prog("progress_match"))
     if not args.from_file:  # a saved file never triggers posting-page requests
         wanted = match.needs_detail(conn, cfg)
         if wanted and edjoin.fetch_sites(conn, wanted, on_progress=prog("progress_details")):
             result = match.match_jobs(conn, cfg, on_progress=prog("progress_match"))
-    _match_notes(result, cfg)
+    _match_notes(result, cfg, grew=_set_aside(match, conn) > before)
 
 
-def _match_notes(result, cfg):
+def _set_aside(match, conn):
+    return sum(r["jobs"] for r in match.review(conn))
+
+
+def _match_notes(result, cfg, grew=True):
+    """The set-aside note is for the day it changes, not every day for the same listings."""
     if result.get("llm_failed"):
         ui.say("err_llm_unreachable", url=cfg.llm_base_url)
-    if result.get("unsure"):
+    if result.get("unsure") and grew:
         ui.say("match_set_aside", n=result["unsure"])
 
 
@@ -161,6 +181,8 @@ def cmd_search(args, conn, cfg):
     if rows:
         ui.say("search_header_more" if len(rows) > args.limit else "search_header", n=min(len(rows), args.limit))
         return ui.show(ui.table(rows[:args.limit]))
+    if not conn.execute("SELECT 1 FROM jobs LIMIT 1").fetchone():  # no cast has ever run: nothing was searched
+        return ui.say("no_listings_yet")
     near = query.nearly(conn, cfg, **filters)
     if args.max_commute is not None:
         ui.say("empty_in_range", max=filters["max_commute"])
@@ -191,6 +213,7 @@ COMMANDS = {"home": cmd_home, "ingest": cmd_ingest, "commute": cmd_commute, "fet
             "match": cmd_match, "search": cmd_search,
             "setup": flows.setup, "go": flows.go, "school": flows.school, "keepers": flows.keepers,
             "applied": flows.applied, "logbook": flows.logbook, "drove": flows.drove,
+            "keep": flows.keep, "toss": flows.toss, "radius": flows.radius, "routing": flows.routing,
             "chart": cmd_chart,
             }
 
@@ -235,15 +258,22 @@ def build_parser():
     add("setup", help="first-time setup (safe to run again)")
     add("go", help="today's session: fetch what's new, then keep or toss each job")
     p = add("school", help="facts about one school")
-    p.add_argument("name", nargs="+", help="school name or 14-digit CDS code")
+    p.add_argument("name", nargs="*", help='school name, like "Lincoln Elementary, Fresno"')
     add("keepers", help="jobs you kept, soonest deadline first")
     p = add("applied", help="note that you applied for a job")
-    p.add_argument("posting", type=int, help="the job's number, from keepers")
+    p.add_argument("posting", nargs="?", help="the job's number, from keepers")  # text: flows words a bad one
     add("logbook", help="what you've looked at, kept and applied for")
     p = add("drove", help="tell me a drive you know, to fit every estimate")
-    p.add_argument("school", help="school name or 14-digit CDS code")
-    p.add_argument("minutes", type=float, help="door-to-door minutes")
+    p.add_argument("school", nargs="?", help='school name, like "Lincoln Elementary, Fresno"')
+    p.add_argument("minutes", nargs="?", help="door-to-door minutes")
     p.add_argument("--pm", action="store_true", help="it was the afternoon drive home")
+    for name, what in (("keep", "keep"), ("toss", "toss")):
+        p = add(name, help=f"{what} a job by its number, whatever its mark was")
+        p.add_argument("posting", nargs="?", help="the job's number")
+    p = add("radius", help="how many miles from home to look (1 to 100)")
+    p.add_argument("miles", nargs="?")
+    p = add("routing", help="drive times from roads or offline")
+    p.add_argument("choice", nargs="?", help="roads or offline")
     p = add("chart", help="write the chart page (map and job cards) and open it")
     p.add_argument("--out", help="file to write (default edtrawl-chart.html next to the database)")
     p.add_argument("--no-open", action="store_true", help="write the file but don't open a browser")
@@ -274,7 +304,13 @@ def _speak(e, args):
         return ("err_edjoin_busy" if e.status == 429 else "err_edjoin_refused"), {}
     if isinstance(e, edjoin.EdjoinError):  # server error or a reply we can't read
         return "err_edjoin_down", {}
-    if isinstance(e, (urllib.error.URLError, ConnectionError, TimeoutError, socket.gaierror)):
+    if isinstance(e, sqlite3.DatabaseError):  # only the kinds a person can act on; other sqlite errors are our bug
+        msg = str(e).lower()
+        if "locked" in msg or "busy" in msg:
+            return "err_db_busy", {}
+        if any(w in msg for w in ("not a database", "malformed", "unable to open", "disk i/o", "corrupt")):
+            return "err_db_unreadable", {"path": args.db}
+    if isinstance(e, OFFLINE):
         # not every OSError: a missing --file is the user's typo, not the network
         return "err_offline", {"service": {"ingest": "data.ca.gov", "fetch": "edjoin.org", "go": "edjoin.org"}.get(args.command, "the internet")}
     return None
@@ -282,12 +318,45 @@ def _speak(e, args):
 
 def _log_unexpected(e, db_path):
     """Append the exception type and the frames (file, line, function) to edtrawl-error.log next to the database.
-    Never str(e), never frame text or locals: argument values (an address) could be in them."""
-    path = Path(db_path).resolve().with_name("edtrawl-error.log")
-    frames = [f"  {Path(f.filename).name}:{f.lineno} in {f.name}" for f in traceback.extract_tb(e.__traceback__)]
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {type(e).__name__}\n" + "\n".join(frames) + "\n")
-    return path
+    Never str(e), never frame text or locals: argument values (an address) could be in them.
+    None when the log can't be written (a read-only folder), so the handler never fails while reporting a failure."""
+    try:
+        path = Path(db_path).resolve().with_name("edtrawl-error.log")
+        frames = [f"  {Path(f.filename).name}:{f.lineno} in {f.name}" for f in traceback.extract_tb(e.__traceback__)]
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {type(e).__name__}\n" + "\n".join(frames) + "\n")
+        return path
+    except OSError:
+        return None
+
+
+NUMBER_SETTINGS = ("radius_miles", "max_age_days", "rush_scale_am", "rush_scale_pm", "match_accept", "match_margin")
+TEXT_SETTINGS = ("home_key", "osrm_url", "llm_base_url", "llm_model", "llm_key")
+
+
+def load_config(path):
+    """config.load plus a type check config.py doesn't do. Problems become ValueError/TypeError/TOMLDecodeError."""
+    cfg = config_mod.load(path)
+    for k in NUMBER_SETTINGS:
+        if isinstance(getattr(cfg, k), bool) or not isinstance(getattr(cfg, k), (int, float)):
+            raise ValueError(f"{k} has the wrong kind of value")
+    for k in TEXT_SETTINGS:
+        if getattr(cfg, k) is not None and not isinstance(getattr(cfg, k), str):
+            raise ValueError(f"{k} has the wrong kind of value")
+    return cfg
+
+
+def _config_problem(e, path):
+    """(COPY key, values) for a settings file we couldn't use. Names the file and, when Python says, the line or setting."""
+    if isinstance(e, tomllib.TOMLDecodeError):
+        m = re.search(r"line (\d+)", str(e))
+        return "err_config_broken", {"path": path, "where": f" (near line {m[1]})" if m else ""}
+    if isinstance(e, TypeError):  # Config(**data) with a key it doesn't have
+        names = re.findall(r"'(\w+)'", str(e))
+        return ("err_config_unknown", {"path": path, "setting": names[-1]}) if names else (
+            "err_config_broken", {"path": path, "where": ""})
+    m = re.match(r"(\w+)", str(e))
+    return "err_config_value", {"path": path, "setting": m[1] if m else ""}
 
 
 def main(argv=None):
@@ -295,25 +364,48 @@ def main(argv=None):
     args = parser.parse_args(argv)
     ui.configure(plain=args.plain, no_emoji=args.no_emoji)
     args.command = args.command or "go"  # bare `python edtrawl.py`: go, which runs setup when there is no home
+    try:
+        cfg = load_config(args.config)
+    except KeyboardInterrupt:
+        ui.say("stopped")
+        return 130
+    except (ValueError, TypeError) as e:
+        key, values = _config_problem(e, args.config)
+        ui.say(key, **values)
+        return 1
+    except Exception as e:
+        return _unexpected(e, args)
     conn = None
     try:
-        cfg = config_mod.load(args.config)
         conn = db.connect(args.db)
         db.init_db(conn)
+        if not cfg.home_key:  # config.toml was deleted or never written, but the database remembers home
+            row = conn.execute("SELECT home_key FROM homes ORDER BY created_on DESC, rowid DESC LIMIT 1").fetchone()
+            if row:
+                cfg.home_key = row[0]
+                config_mod.set("home_key", row[0], args.config)
         return COMMANDS[args.command](args, conn, cfg) or 0
     except KeyboardInterrupt:
         ui.say("stopped")
         return 130
     except Exception as e:
-        spoken = _speak(e, args)
-        if spoken:
-            ui.say(spoken[0], **spoken[1])
-        else:
-            ui.say("err_unexpected", path=str(_log_unexpected(e, args.db)))
-        return 1
+        return _unexpected(e, args)
     finally:
         if conn:
             conn.close()
+
+
+def _unexpected(e, args):
+    spoken = _speak(e, args)
+    if spoken:
+        ui.say(spoken[0], **spoken[1])
+    else:
+        path = _log_unexpected(e, args.db)
+        if path:
+            ui.say("err_unexpected", path=str(path))
+        else:
+            ui.say("err_unexpected_nolog")
+    return 1
 
 
 if __name__ == "__main__":

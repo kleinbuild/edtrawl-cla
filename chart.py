@@ -76,6 +76,7 @@ def gather(conn, cfg, today):
         r["days_left"] = left
         jobs.append(r)
     return dict(schools=schools, jobs=jobs, today=today,
+                fetched=bool(conn.execute("SELECT 1 FROM jobs LIMIT 1").fetchone()),  # false: no cast has ever run
                 roads=any(s["provider"] == "osrm" for s in schools.values()))
 
 
@@ -339,7 +340,7 @@ def render(data, cfg):
         lead = (f"{ui.count(near, 'job')} within 30 minutes, nearest first. "
                 f"{ui.count(hiring, 'school')} hiring, among the {n_sch:,} in range.")
     else:
-        title = "Your chart: the net is empty today"
+        title = "Your chart: no jobs in range" if data.get("fetched", True) else "Your chart: no listings fetched yet"
         lead = f"{n_sch:,} schools in range are on the chart, so you can see the ground."
     soon = lambda j: j["days_left"] is not None and j["days_left"] <= SOON_DAYS
     chips = [f'<li><button type="button" class="chip" aria-pressed="false" data-kind="band" data-band="{i}">'
@@ -349,17 +350,19 @@ def render(data, cfg):
     chips.append('<li><button type="button" class="chip" aria-pressed="false" data-kind="kept">'
                  f'Kept only ({sum(1 for j in jobs if j["mark_status"] == "kept")})</button></li>')
     chips.append('<li><button type="button" class="chip" aria-pressed="false" data-kind="soon">'
-                 f'Closing soon ({sum(1 for j in jobs if soon(j))})</button></li>')
+                 f'Closes within {SOON_DAYS} days ({sum(1 for j in jobs if soon(j))})</button></li>')
     if jobs:
         lst = ('<ul class="chips" aria-label="Filters">' + "".join(chips) + "</ul>"
-               '<p class="readonly">To keep or toss a job, use the terminal: <code>python edtrawl.py</code>. '
+               '<p class="readonly">To keep or toss a job, use the terminal: <code>' + ui.launcher() + ' edtrawl.py</code>. '
                "This page only shows.</p>"
                '<p class="count" id="count" aria-live="polite"></p><ol class="cards">'
                + "".join(_card(j, today, schools) for j in jobs) + "</ol>")
     else:
-        lst = ('<div class="empty"><p>No teaching jobs are posted within range right now.</p>'
-               "<p>The schools around you are still on the chart. To look again another day:</p>"
-               "<p><code>python edtrawl.py</code></p></div>")
+        said = ("No teaching jobs are posted within range right now." if data.get("fetched", True)
+                else "I haven't fetched any job listings yet, so there are no jobs to show.")
+        lst = ('<div class="empty"><p>' + said + "</p>"
+               "<p>The schools around you are still on the chart. To fetch listings or look again another day:</p>"
+               "<p><code>" + ui.launcher() + " edtrawl.py</code></p></div>")
     sources = ("School data: California Department of Education. Listings: edjoin.org."
                + (" Road distances: © OpenStreetMap contributors, routed by OSRM." if data["roads"] else ""))
     page = PAGE

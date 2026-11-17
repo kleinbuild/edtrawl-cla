@@ -92,10 +92,22 @@ class Chart(unittest.TestCase):
 
     def test_empty_state_still_shows_schools(self):
         html = page([])
-        self.assertIn("the net is empty today", html)
-        self.assertIn("python edtrawl.py", html)
+        self.assertIn("no listings fetched yet", html)  # nothing has ever been fetched: say so, not "no jobs"
+        self.assertIn("haven&#x27;t fetched" if "&#x27;" in html else "haven't fetched", html)
+        self.assertNotIn("the net", html)
+        self.assertRegex(html, r"python3? edtrawl\.py")
         self.assertEqual(html.count("<circle cx="), 3 + len(chart._rings(20)) + 1)  # 3 schools, rings, home
         self.assertNotIn('class="card"', html)
+
+    def test_plain_title_and_exact_chip_when_listings_exist_but_none_in_range(self):
+        conn, cfg = make([(1, "Math", None)])  # a job with no school and no commute is not in range
+        conn.execute("UPDATE jobs SET district_code = 'x'")
+        html = chart.render(chart.gather(conn, cfg, TODAY), cfg)
+        self.assertIn("Your chart: no jobs in range", html)
+        self.assertIn("No teaching jobs are posted within range", html)
+        html = page([(1, "Math", "34670000000000")])
+        self.assertIn(f"Closes within {chart.SOON_DAYS} days", html)
+        self.assertNotIn("Closing soon", html)
 
     def test_tossed_and_closed_jobs_are_left_out(self):
         conn, cfg = make([(1, "Kept one", "34670000000000"), (2, "Tossed one", "34670000000000"),

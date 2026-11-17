@@ -55,7 +55,7 @@ The progress bars are left out here. The school counts come from the state's sch
 - A ZIP code. No internet is needed. Home is placed at the middle of that ZIP code's schools, so drive times are a little rougher.
 - A map position, typed as two numbers with a comma between them, for example `36.74,-119.79`.
 
-**Step 2 of 4, schools near you.** EdTrawl asks how far to look, in miles, as the crow flies. Press Enter for the default of 20. It then tells you how many public schools and districts are in that range, and the nearest school. In the recorded run:
+**Step 2 of 4, schools near you.** EdTrawl asks how far to look, in miles, as the crow flies, from 1 to 100. Press Enter for the default of 20. It then tells you how many public schools and districts are in that range, and the nearest school. If there are none, it says so and asks again, and it names the `home` command in case home is in the wrong place. In the recorded run:
 
 ```
 Within 20 miles of home, as the crow flies: 472 public schools in 25 districts.
@@ -65,16 +65,21 @@ The nearest is William Land Elementary, about 0.7 miles away.
 **Step 3 of 4, drive times.** EdTrawl asks how to work out drive times. Type `o` or `r` and press Enter.
 
 - `o` is offline. A formula works out each drive from the straight-line distance. Nothing leaves your computer. It cannot see bays, mountains or freeways.
-- `r` is roads. EdTrawl asks a free routing server for real road distances. It sends your home spot, rounded to about 100 metres, and the positions of nearby schools. Nothing else. You can switch to offline later in `config.toml`.
+- `r` is roads. EdTrawl asks a free routing server for real road distances. It sends your home spot, rounded to about 100 metres, and the positions of nearby schools. Nothing else.
 
-Both add typical rush-hour traffic. Both are estimates. The recorded run chose roads and showed this line when it finished:
+Pressing Enter means offline. Both add typical rush-hour traffic. Both are estimates. If the road server does not answer, EdTrawl says so and asks again, so you can choose offline. When the drive times are worked out, one line says how many schools have them, how they were worked out, and the command to switch. From a test run on a small sample of schools:
 
 ```
-Drive times are ready for 472 schools.
-Road distances: © OpenStreetMap contributors, routed by OSRM.
+Drive times are ready for 4 schools, worked out offline. To use road distances
+instead:
+    python edtrawl.py routing roads
 ```
+
+You can switch at any time with `python edtrawl.py routing roads` or `python edtrawl.py routing offline`. You never need to edit a settings file.
 
 **Step 4 of 4, one drive you know.** Type the name of a school you drive to now, or used to. Then type your real morning drive time in minutes. EdTrawl adjusts its estimates to match your roads. You can press Enter to skip this step and come back to it later with `drove`, which is described in section 5.
+
+If you stop setup part way, for example by closing the terminal, the next run picks up at the first step you did not finish. It does not quietly use the default answers.
 
 The first run took about 95 seconds in the recorded run. Most of that time went to two steps:
 
@@ -93,7 +98,7 @@ Each day, run the same command:
 python edtrawl.py
 ```
 
-EdTrawl does three things. It looks for new jobs. It works out drive times for any new school. Then it shows you each new job once. Here is one real job card from the recorded run:
+EdTrawl does three things. It looks for new jobs. It works out drive times for any new school. Then it shows you each new job once, ten at a time. If this computer is not online, EdTrawl says it could not check for new jobs and shows the ones it already saved. Here is one real job card from the recorded run. Only its key line, at the bottom, has changed since:
 
 ```
  ── 2 of 58 ─────────────────────────────────────────────── closes Thu (3 days)
@@ -102,7 +107,7 @@ EdTrawl does three things. It looks for new jobs. It works out drive times for a
  Drive   ~4 min there · ~5 home if you leave by 3:30   (about 50 min a week)
  School  362 students, shrinking (-4% in a year) · 19 teachers · Title I
  Pay     not listed
-[k]eep   [t]oss   [s]kip   [o]pen posting   [m]ore about the school   [q]uit
+[k]eep   [t]oss   [s]kip   [b]ack   [o]pen   [m]ore about the school   [q]uit
 ```
 
 What each line means:
@@ -110,23 +115,28 @@ What each line means:
 - **`2 of 58`** is the card number, out of the new jobs for today.
 - **`closes Thu (3 days)`** is the application deadline. A card with no deadline has no closing text.
 - **The job title** comes from the posting. The school name is in it when the employer wrote one.
-- **The school and district** are the place the job is at.
+- **The school and district** are the place the job is at. A card that says `Site not listed` is a real job. The posting names the district but not a school, so the drive is shown as a range across the district's schools in range. These cards do not offer `[m]ore about the school`, because there is no one school to tell you about.
 - **`Drive`** is the drive time to the school, to work and back home. The `~` sign means the time is an estimate. EdTrawl puts `~` on every drive time it works out. It never presents one as a measured time.
 - **`if you leave by 3:30`** is the assumption behind the drive home. The afternoon drive is worked out for leaving at 3:30. Leaving later is usually slower.
-- **`about 50 min a week`** is the drive time each week for five working days, morning and afternoon together.
+- **`about 50 min a week`** (or `about 4 hrs a week`) is the drive time for five working days, there and back, added together.
 - **`School`** is the enrollment this year, and whether it is growing, steady or shrinking compared with a year before. Then the staff count and any special program the state lists, such as Title I.
 - **`Pay`** is the pay text from the posting. `not listed` means the posting does not say.
 
-The keys at the bottom work like this. Type the letter and press Enter.
+The keys at the bottom work like this. Type the letter, or the whole word (`keep`, `toss`, `skip`, `back`, `open`, `more`, `quit`), and press Enter. Pressing Enter alone skips the card. Anything else, such as `ok` or `thanks`, is not understood, and EdTrawl asks again.
 
 - `k` keeps the job. It waits in your keepers list until you apply or toss it.
 - `t` tosses it. It will not come back.
 - `s` skips it for now. It comes up again next time.
+- `b` goes back to the previous card and undoes what you chose on it.
 - `o` opens the posting in your web browser.
 - `m` shows facts about the school, such as grades, enrollment, staff and student groups.
-- `q` stops here. The jobs you have not seen stay for next time.
+- `q` stops here. The jobs you have not seen stay for next time. If the terminal closes or you press Ctrl-C, EdTrawl stops the same way, and everything you chose so far is saved.
+
+Cards come in hands of ten. After each ten, EdTrawl shows how many you have done and what you chose, and asks whether to go on with the next hand. Type `y` to go on. Pressing Enter stops there, which is a fine place to stop: the rest are waiting next time.
 
 When you have seen every new job, EdTrawl says so and stops. The session ends there. You can close the terminal.
+
+If you chose something by mistake after the session, `keep` and `toss` fix it by number (section 5).
 
 ## 5. The other commands
 
@@ -146,7 +156,7 @@ When you apply for one, note it by its number:
     python edtrawl.py applied 2293501
 ```
 
-**`applied`** notes that you applied. Use the number from `keepers`. The job then leaves your keepers list and goes to the logbook, and `search --status applied` shows it. If it was your last keeper, `keepers` says there are none. The first time you do this, EdTrawl says so.
+**`applied`** notes that you applied. Use the number from `keepers`. The job then leaves your keepers list and goes to the logbook, and `search --status applied` shows it. If it was your last keeper, `keepers` says there are none. The first time you do this, EdTrawl says so. If you already marked that job as applied, EdTrawl says that instead of repeating itself.
 
 ```
 python edtrawl.py applied 2293501
@@ -174,10 +184,22 @@ Special Education - DEPT-62.1 · Sacramento City Unified School District
 
 The output is shortened here. The logbook shows the last ten marks.
 
-**`school`** shows the facts about one school: grades, enrollment, staff, student groups, ethnicity figures, drive times and website. Use it before you apply. Type part of the name. If more than one school matches, EdTrawl lists them. Then use the school's 14-digit code, which the program also accepts. This example uses a code from the recorded data:
+**`keep`** and **`toss`** set a job's mark by its number. Use them to undo a slip, for any job EdTrawl has saved. The number is the first thing on each line of `keepers` or `search`. The examples are from a test run on a small sample of schools.
 
 ```
-python edtrawl.py school 34674390133777
+python edtrawl.py keep 2294284
+python edtrawl.py toss 2294284
+```
+
+```
+Marked as kept: Teacher, Elementary, 6th Grade @ Nicholas ELEM-28.4.
+Marked as tossed: Teacher, Elementary, 6th Grade @ Nicholas ELEM-28.4.
+```
+
+**`school`** shows the facts about one school: grades, enrollment, staff, student groups, ethnicity figures, drive times and website. Use it before you apply. Type part of the name, or the name and city exactly as EdTrawl prints them, with a comma between. If more than one school matches, EdTrawl lists them and asks for a number. If it cannot ask, it changes nothing and tells you to add more of the name.
+
+```
+python edtrawl.py school "Washington Elementary, Sacramento"
 ```
 
 ```
@@ -186,7 +208,7 @@ python edtrawl.py school 34674390133777
  Grades    K–6 · Elementary · Title I
  Students  362, shrinking (-4% in a year)
  Staff     19 teachers · 33 staff in all
- Drive     ~4 min there · ~5 home if you leave by 3:30   (about 50 min a week)
+ Drive     ~5 min there · ~5 home if you leave by 3:30   (about 50 min a week)
  Website   http://washington.scusd.edu/
  Drive times assume arriving by 7:00 and leaving at 3:30 on a weekday. Later
  in the afternoon is usually slower.
@@ -195,26 +217,16 @@ python edtrawl.py school 34674390133777
 
 The output is shortened here. The student group and ethnicity lines are also shown.
 
-**`drove`** tells EdTrawl a drive you know, so it can adjust its estimates. Give the school and your door-to-door minutes. Add `--pm` for the drive home in the afternoon. It shows one before-and-after line.
-
-The examples below use the school code from the `school` example above. The output is from a scratch copy of the recorded data.
+**`drove`** tells EdTrawl a drive you know, so it can adjust its estimates. Give the school (the same way as for `school`) and your door-to-door minutes. Add `--pm` for the drive home in the afternoon. The school has to be within your search radius. The answer starts with that drive, what EdTrawl had estimated and what you said, then says every estimate in that direction was scaled by the same amount, and ends with the change for the typical school near you. This example is from a test run on a small sample of schools.
 
 ```
-python edtrawl.py drove 34674390133777 6
+python edtrawl.py drove "Washington Elementary, Sacramento" 6
 ```
 
 ```
-Thanks. I've scaled every morning estimate to match: the typical school near
-you went from ~23 to ~32 min.
-```
-
-```
-python edtrawl.py drove 34674390133777 9 --pm
-```
-
-```
-Thanks. I've scaled every afternoon estimate to match: the typical school near
-you went from ~35 to ~43 min.
+For Washington Elementary you said 6 min, and I'd estimated ~5. I've scaled
+every morning estimate by the same amount, so the typical school near you went
+from ~7 to ~9 min.
 ```
 
 Use `drove` whenever an estimate looks wrong. One real drive fixes every estimate for that direction.
@@ -264,7 +276,7 @@ OPTIONS FOR YOUTH  (2 jobs)
 
 The output is shortened here.
 
-**`home`** sets or changes home. Use a ZIP code if you do not want to send an address anywhere:
+**`home`** sets or changes home. Use a ZIP code if you do not want to send an address anywhere. Put your own ZIP code in place of 93721, which is only an example:
 
 ```
 python edtrawl.py home --zip 93721
@@ -276,13 +288,26 @@ To use a street address instead, put it in quotes:
 python edtrawl.py home "123 Main St, Fresno"
 ```
 
-**`setup`** runs the setup steps again. It skips any step that is already done, so on a home that is set up it does little. To change the home, use `home`. To switch between roads and offline, or change the search radius, edit `routing` or `radius_miles` in `config.toml`.
+**`radius`** changes how many miles from home to look, from 1 to 100, and works out drive times for the new range. If no school is within that many miles, it changes nothing and says so.
+
+```
+python edtrawl.py radius 10
+```
+
+**`routing`** switches drive times between roads and offline, and works out the drive times again. If the road server does not answer, it keeps your current setting and says so.
+
+```
+python edtrawl.py routing roads
+python edtrawl.py routing offline
+```
+
+**`setup`** runs the setup steps again. It skips any step that is already done, so on a home that is set up it does little. To change the home, use `home`.
 
 ```
 python edtrawl.py setup
 ```
 
-**`chart`** writes one web page file, `edtrawl-chart.html`, next to your database and opens it in your browser. It shows a map with home in the centre, distance rings, every school in range as a small dot, and the schools that are hiring marked by drive time. Your jobs are listed beside it, and you can filter them by drive time, by kept jobs, or by jobs closing soon. The page is one file with nothing loaded from the internet, so opening it contacts no website. It only shows; keeping and tossing still happen in the terminal. It shows where home is relative to nearby schools, so keep the file to yourself.
+**`chart`** writes one web page file, `edtrawl-chart.html`, next to your database and opens it in your browser. It shows a map with home in the centre, distance rings, every school in range as a small dot, and the schools that are hiring marked by drive time. Your jobs are listed beside it, and you can filter them by drive time, by kept jobs, or by jobs closing within seven days. The page is one file with nothing loaded from the internet, so opening it contacts no website. It only shows; keeping and tossing still happen in the terminal. It shows where home is relative to nearby schools, so keep the file to yourself.
 
 ```
 python edtrawl.py chart
@@ -331,7 +356,7 @@ EdTrawl contacts only the services below, and only for the reasons listed. Nothi
 Stored on your computer:
 
 - `edtrawl.db` holds the schools, the drive times, the job postings, your keep, toss and applied marks, and your home spot.
-- `config.toml` holds your settings and your home spot. If you add a key for an AI model, it goes here too.
+- `config.toml` holds your settings and your home spot. If you add a key for an AI model, it goes here too. If you delete it, EdTrawl takes the home spot from the database and writes the file again.
 - The `data` folder holds the school files from the state.
 - `edtrawl-error.log` is written only when something unexpected goes wrong. It records the kind of error and where it happened. It does not record addresses.
 
@@ -363,8 +388,12 @@ This part has been tested only against a stand-in, not a real model. A small loc
 
 ## 9. When something looks wrong
 
-- **A job is missing.** Run `python edtrawl.py match --review`. It lists the postings EdTrawl set aside. On a terminal, you can pick the right name for each one.
+- **A job is missing.** Run `python edtrawl.py match --review`. It lists the postings EdTrawl set aside because they did not clearly match a school or district. They are not lost, and EdTrawl does not guess. On a terminal, you can pick the right name for each one.
 - **A drive time looks off.** Run `python edtrawl.py drove` with the school and your real minutes, as in section 5. Add `--pm` for the drive home.
+- **EdTrawl says it can't read `config.toml`.** It names the file and, when it can, the setting or line. Fix that line in a text editor, or delete the file. Deleting it is safe: your jobs and marks are in the database.
+- **EdTrawl says it can't read `edtrawl.db`.** Move that file somewhere else and run the command again. The school files in the `data` folder stay.
+- **EdTrawl says another window is busy.** Another copy of EdTrawl is using the database. Try again in a minute.
+- **EdTrawl says there are no schools near home.** Use `radius` with a bigger number, or `home` if home is in the wrong place.
 - **You want to start over.** Delete `edtrawl.db` and `config.toml` from the EdTrawl folder. The next run asks the setup questions again. The `data` folder can stay.
 - **Something unexpected happened.** EdTrawl says so and names a file. The details are in `edtrawl-error.log`, in the same folder as `edtrawl.db`. The file does not record addresses, so you can send it to the person who maintains EdTrawl.
 
