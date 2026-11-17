@@ -376,7 +376,8 @@ def school(args, conn, cfg):
 def keepers(args, conn, cfg):
     rows = query.search(conn, cfg, status="kept", limit=None)
     if not rows:
-        return ui.say("keepers_empty")
+        n = _count(conn, "SELECT COUNT(*) FROM job_marks WHERE status = 'applied'")
+        return ui.say("keepers_all_applied", n=n) if n else ui.say("keepers_empty")
     today = date.today()
     # open first by deadline, then open-ended, then closed
     rows.sort(key=lambda r: (_closed(r["deadline"], today), not r["deadline"], r["deadline"] or ""))

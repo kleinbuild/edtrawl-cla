@@ -7,7 +7,8 @@ config.toml
 *.db-shm
 
 # downloads and generated output
-data/
+data/*
+!data/calibration.csv
 *.html
 !tests/fixtures/*.html
 

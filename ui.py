@@ -72,7 +72,7 @@ COPY = {
         "That's far from my estimate, so I adjusted as far as I allow (half or double). If that "
         "day's traffic was unusual, a typical day's time will fit better."),
     "setup_done": "Setup is done.",
-    "edjoin_notice": "Job listings come from edjoin.org. I ask it for teaching jobs in the counties around you; your home isn't sent.",
+    "edjoin_notice": "Job listings come from edjoin.org. I ask it for teaching jobs in the counties around you, and read a few postings to find the school. Your home isn't sent.",
 
     # ── progress lines (label on the left, real counts on the right) ──
     "progress_schools": "Loading California schools",
@@ -133,6 +133,9 @@ COPY = {
         "confidence. To check by hand:\n    python edtrawl.py match --review"),
     "fetch_done": "{new:new listing|new listings} saved, and {seen} I'd seen before.",
     "search_header": "{n:job|jobs}, nearest drive first.",
+    "search_header_more": "The nearest {n:job|jobs}. There are more: add --limit and a bigger number to see them.",
+    "empty_nearly_filtered": "{n:job opens|jobs open} up at {minutes} minutes. Run the same search again, with:\n    --max-commute {minutes}",
+    "keepers_all_applied": "No keepers waiting. You've applied to {n:job|jobs}, listed in the logbook:\n    python edtrawl.py logbook",
     "empty_filtered": "No jobs fit those filters. Try dropping one.",
     "review_header": "{n:listing|listings} set aside. Under each are the closest names I found; 1.00 would be identical.",
     "review_empty": "Nothing is set aside.",
@@ -209,6 +212,9 @@ COPY = {
     "table_closed": "closed",
     "more_times": "Drive times assume arriving by 7:00 and leaving at 3:30 on a weekday. Later in the afternoon is usually slower.",
     "more_rush": "Afternoon traffic here builds fast; leaving after 4 can add a third or more.",
+    "chart_done": "Chart written to {path} and opened in your browser. It shows where home is, so keep the file to yourself.",
+    "chart_saved": "Chart written to {path}. It shows where home is, so keep the file to yourself.",
+    "chart_written": "Chart written to {path}. I couldn't open a browser from here, so open that file yourself.",
     "more_source": "School figures: California Department of Education, {year}.",
 
     # ── flows: setup needs a terminal, picking among several schools, the interactive review ──

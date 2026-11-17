@@ -21,6 +21,7 @@ OSRM_PAUSE = 1.0  # public-server policy: at most one request per second
 # Fitted 2026-11-16 by calibrate.py on 2195 home-to-school pairs from 48 stand-in homes (60 homes, 2734 pairs in all,
 # schools within 20 straight miles); free-flow, before the rush factor. Median error on the 539 held-out pairs
 # (12 unseen homes): 2.4 min, 13%; 90th percentile 8.8 min, 37%. Per group, see `python3 calibrate.py --report`.
+# Town did not improve on those 12 homes (median 5.6 -> 6.8 min); its 90th percentile did (16.3 -> 14.0).
 # fitted against OpenStreetMap road times via OSRM; © OpenStreetMap contributors
 COEFFS = {"1": (4.08, 1.653), "2": (4.50, 1.782), "3": (1.60, 2.061), "4": (4.81, 1.899)}
 

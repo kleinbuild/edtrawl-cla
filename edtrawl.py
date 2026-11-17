@@ -157,19 +157,32 @@ def cmd_search(args, conn, cfg):
                    status=args.status, new_only=args.new)
     if args.max_commute is not None and args.max_commute.is_integer():
         filters["max_commute"] = int(args.max_commute)  # so the message says 15, not 15.0
-    rows = query.search(conn, cfg, limit=args.limit, **filters)
+    rows = query.search(conn, cfg, limit=args.limit + 1, **filters)  # one extra, to know whether the list was cut
     if rows:
-        ui.say("search_header", n=len(rows))
-        return ui.show(ui.table(rows))
+        ui.say("search_header_more" if len(rows) > args.limit else "search_header", n=min(len(rows), args.limit))
+        return ui.show(ui.table(rows[:args.limit]))
     near = query.nearly(conn, cfg, **filters)
     if args.max_commute is not None:
         ui.say("empty_in_range", max=filters["max_commute"])
-    if near:
-        ui.say("empty_nearly", minutes=near[0], n=near[1])
-    elif any(v not in (None, False) for k, v in filters.items() if k != "max_commute"):
+    other = any(v not in (None, False) for k, v in filters.items() if k != "max_commute")
+    if near:  # with other filters on, the suggested command must not drop them, so only the flag is shown
+        ui.say("empty_nearly_filtered" if other else "empty_nearly", minutes=near[0], n=near[1])
+    elif other:
         ui.say("empty_filtered")  # some other filter emptied it: "no jobs near you" would be untrue
     elif args.max_commute is None:
         ui.say("empty_none_near", radius=cfg.radius_miles)
+
+
+def cmd_chart(args, conn, cfg):
+    import webbrowser
+    import chart
+    if not cfg.home_key:
+        raise travel.NoHome
+    out = Path(args.out) if args.out else Path(args.db).resolve().with_name("edtrawl-chart.html")
+    chart.write_chart(conn, cfg, str(out))
+    if args.no_open:
+        return ui.say("chart_saved", path=str(out))
+    ui.say("chart_done" if webbrowser.open(out.resolve().as_uri()) else "chart_written", path=str(out))
 
 
 flows.cli = sys.modules[__name__]  # flows reuses cmd_ingest, cmd_fetch, locate; set here so it works run as a script too
@@ -178,7 +191,7 @@ COMMANDS = {"home": cmd_home, "ingest": cmd_ingest, "commute": cmd_commute, "fet
             "match": cmd_match, "search": cmd_search,
             "setup": flows.setup, "go": flows.go, "school": flows.school, "keepers": flows.keepers,
             "applied": flows.applied, "logbook": flows.logbook, "drove": flows.drove,
-            # "chart": another agent adds cmd_chart here and a parser entry below
+            "chart": cmd_chart,
             }
 
 
@@ -231,7 +244,9 @@ def build_parser():
     p.add_argument("school", help="school name or 14-digit CDS code")
     p.add_argument("minutes", type=float, help="door-to-door minutes")
     p.add_argument("--pm", action="store_true", help="it was the afternoon drive home")
-    # chart: parser entry goes here
+    p = add("chart", help="write the chart page (map and job cards) and open it")
+    p.add_argument("--out", help="file to write (default edtrawl-chart.html next to the database)")
+    p.add_argument("--no-open", action="store_true", help="write the file but don't open a browser")
     return top
 
 
