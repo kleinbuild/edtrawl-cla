@@ -223,6 +223,15 @@ class Counties(unittest.TestCase):
         conn.execute("INSERT INTO schools (cds_code, district_code, county_name, school_name, first_year, last_year) "
                      "VALUES ('9' || substr('0000000000000', 1), '1234567', 'Fresno', 's', 'a', 'a')")  # no commute row
         self.assertEqual(edjoin.county_ids_in_range(conn, SimpleNamespace(home_key="h")), [34, 58])
+        # A district school that sits across the county line is listed under its district's county, so both count;
+        # a charter's administrative county is its authorizer's, so only where it sits counts.
+        for code, admin, charter in (("70000000000001", "Fresno", "N"), ("70000000000002", "Inyo", "Y")):
+            conn.execute("INSERT INTO schools (cds_code, district_code, county_name, geo_county_name, charter, school_name, "
+                         "first_year, last_year) VALUES (?, '1234567', ?, 'Yolo', ?, 's', 'a', 'a')", (code, admin, charter))
+            conn.execute("INSERT INTO commutes VALUES (?, 'h', 5, 1, 1, 'estimate', 't')", (code,))
+        ids = edjoin.county_ids_in_range(conn, SimpleNamespace(home_key="h"))
+        self.assertIn(edjoin.COUNTY_IDS["Fresno"], ids)
+        self.assertNotIn(edjoin.COUNTY_IDS["Inyo"], ids)
 
     def test_table(self):
         self.assertEqual((edjoin.COUNTY_IDS["Alameda"], edjoin.COUNTY_IDS["Sacramento"], edjoin.COUNTY_IDS["Yuba"]),

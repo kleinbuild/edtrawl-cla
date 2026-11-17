@@ -148,6 +148,7 @@ class Cache(Base):
         n = self.conn.execute("SELECT COUNT(*) FROM commutes WHERE home_key = ?", (self.cfg.home_key,)).fetchone()[0]
         self.assertEqual((out["removed"], n), (4 - out["in_range"], out["in_range"]))
         self.assertLess(n, 4)
+        self.assertFalse(self.conn.in_transaction)  # the removal is committed even when nothing was recomputed
 
     def test_osrm_batches_and_url(self):
         urls = []
@@ -179,6 +180,13 @@ class Drives(Base):
         self.assertEqual(self.factors(), (1.5, 2.0))
         travel.record_drive(self.conn, self.cfg, SCHOOLS[1][0], 100, "am")  # ratio 5 clamps to 2.0; median(1.5, 5) = 3.25 -> 2.0
         self.assertEqual(self.factors()[0], 2.0)
+
+    def test_factor_follows_the_model(self):
+        travel.record_drive(self.conn, self.cfg, SCHOOLS[0][0], 30, "am")  # modelled 20 -> factor 1.5
+        self.conn.execute("UPDATE commutes SET am_minutes = 30, pm_minutes = 30")  # the model now agrees with the drive
+        self.assertEqual(travel.refit(self.conn, self.cfg.home_key), (1.0, 1.0))
+        self.conn.execute("DELETE FROM commutes")  # the known school left the range: keep the last fit, don't reset
+        self.assertEqual(travel.refit(self.conn, self.cfg.home_key), (1.0, 1.0))
 
     def test_no_commute(self):
         with self.assertRaises(travel.NoCommute):

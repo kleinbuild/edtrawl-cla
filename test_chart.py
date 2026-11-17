@@ -104,7 +104,7 @@ class Chart(unittest.TestCase):
         conn.execute("UPDATE jobs SET district_code = 'x'")
         html = chart.render(chart.gather(conn, cfg, TODAY), cfg)
         self.assertIn("Your chart: no jobs in range", html)
-        self.assertIn("No teaching jobs are posted within range", html)
+        self.assertIn("None of the jobs saved so far are within range", html)
         html = page([(1, "Math", "34670000000000")])
         self.assertIn(f"Closes within {chart.SOON_DAYS} days", html)
         self.assertNotIn("Closing soon", html)

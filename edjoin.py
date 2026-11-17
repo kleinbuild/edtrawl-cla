@@ -135,9 +135,14 @@ def fetch_listings(county_ids, days=31, limit=None, on_progress=None):
 
 def county_ids_in_range(conn, cfg):
     """Edjoin county ids for counties holding a school with a cached commute from the home."""
+    # Physical county for every school; also the administrative county for non-charters, because a district
+    # posts under its own county even for its one school across the line. A charter's administrative county is
+    # its authorizer's, which can be the far end of the state, so that one is left out.
     names = [r[0] for r in conn.execute(
-        "SELECT DISTINCT COALESCE(s.geo_county_name, s.county_name) FROM commutes c JOIN schools s ON s.cds_code = c.cds_code "
-        "WHERE c.home_key = ?", (cfg.home_key,))]
+        "SELECT COALESCE(s.geo_county_name, s.county_name) FROM commutes c JOIN schools s ON s.cds_code = c.cds_code "
+        "WHERE c.home_key = ?1 UNION "
+        "SELECT s.county_name FROM commutes c JOIN schools s ON s.cds_code = c.cds_code "
+        "WHERE c.home_key = ?1 AND COALESCE(s.charter, 'N') = 'N'", (cfg.home_key,))]
     return sorted({COUNTY_IDS[n] for n in names if n in COUNTY_IDS})
 
 

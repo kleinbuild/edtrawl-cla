@@ -151,7 +151,7 @@ class Setup(Base):
     def test_known_drive_in_setup(self):
         self.run_cli(keys=("95814", "", "", "Washington", "12"))
         self.assertEqual(self.q("SELECT COUNT(*), MIN(minutes) FROM known_drives"), [(1, 12.0)])
-        self.assertRegex(self.flat, r"(typical school near you went from ~\d+ to ~\d+ min|already close)")
+        self.assertRegex(self.flat, r"(half the schools near you are now within ~\d+ min|close to my estimate)")
 
     def test_no_terminal_no_home(self):
         self.tty = False
@@ -165,7 +165,7 @@ class Session(Base):
         self.first_run("q")  # set up, then quit on the first card
 
     def test_quit_midway_marks_nothing_and_says_how_many_remain(self):
-        self.assertIn("Stopping here: nothing marked. The other 6 jobs", self.flat)
+        self.assertIn("Stopped here: nothing marked. Everything", self.flat)
         self.assertEqual(self.q("SELECT COUNT(*) FROM job_marks"), [(0,)])
 
     def test_keep_toss_and_end_line(self):
@@ -176,7 +176,7 @@ class Session(Base):
     def test_ctrl_c_saves_marks_so_far_and_exits_130(self):
         self.assertEqual(self.run_cli("go", keys=("k", "t", KeyboardInterrupt())), 130)
         self.assertEqual(self.q("SELECT COUNT(*) FROM job_marks"), [(2,)])
-        self.assertIn("Stopping here: kept 1, tossed 1. The other 4 jobs", self.flat)
+        self.assertIn("Stopped here: kept 1, tossed 1. Everything", self.flat)
 
     def test_first_keep_line_once_across_sessions(self):
         self.run_cli("go", keys="k")
@@ -205,7 +205,7 @@ class Session(Base):
     def test_nothing_new_is_a_proper_end(self):
         self.run_cli("go", keys="kttttt")
         self.run_cli("go", keys="")
-        self.assertIn("Nothing new since earlier today. Your 1 keeper is still open.", self.flat)
+        self.assertIn("Nothing new since earlier today. You have 1 keeper waiting:", self.flat)
 
     def test_empty_when_no_keepers(self):
         self.run_cli("go", keys="tttttt")
@@ -267,8 +267,8 @@ class SmallCommands(Base):
     def test_logbook(self):
         self.run_cli("applied", str(self.q("SELECT MIN(posting_id) FROM job_marks")[0][0]))
         self.run_cli("logbook")
-        self.assertIn("This week: looked at 6, kept 6, applied to 1.", self.out)
-        self.assertRegex(self.out, r"Since \w+ \d+: looked at 6")
+        self.assertIn("This week: decided on 6, kept 6, applied to 1.", self.out)
+        self.assertRegex(self.out, r"Since \w+ \d+: decided on 6")
         self.assertRegex(self.flat, r"applied .* - Sacramento")
 
     def test_logbook_empty(self):
@@ -300,7 +300,7 @@ class SmallCommands(Base):
         before = self.q("SELECT factor_am FROM homes")[0][0]
         self.assertEqual(self.run_cli("drove", "Washington", "30"), 0)
         self.assertNotEqual(self.q("SELECT factor_am FROM homes")[0][0], before)
-        self.assertRegex(self.flat, r"you said 30 min, and I'd estimated ~\d+. I've scaled every morning estimate by the same amount, so the typical school near you went from ~\d+ to ~\d+ min")
+        self.assertRegex(self.flat, r"you said 30 min, and I'd estimated ~\d+. I've scaled every morning estimate by the same amount: half the schools near you are now within ~\d+ min")
         self.assertEqual(self.q("SELECT direction, minutes FROM known_drives"), [("am", 30.0)])
 
     def test_drove_pm_clamped_and_unchanged_and_bad_minutes(self):
@@ -312,7 +312,7 @@ class SmallCommands(Base):
         modelled = self.q("SELECT am_minutes * (SELECT factor_am FROM homes) FROM commutes c JOIN schools s USING (cds_code) "
                           "WHERE school_name LIKE 'Washington%'")[0][0]
         self.run_cli("drove", "Washington", str(modelled))  # exactly what we already thought
-        self.assertIn("already close", self.out)
+        self.assertIn("close to my estimate", self.out)
 
     def test_review_stores_a_manual_choice(self):
         conn = sqlite3.connect(self.db)
@@ -340,9 +340,9 @@ class DeckRound2(Base):
 
     def test_hands_of_ten_with_a_pause_and_a_proper_stop(self):
         self.run_cli("go", keys=["s"] * 10 + [""])  # Enter at the hand boundary stops
-        self.assertIn("ten at a time. Enter skips a card; q stops and keeps your place.", self.flat)
+        self.assertIn("ten at a time. Enter skips a card; q stops, and the rest wait for next time.", self.flat)
         self.assertIn("That's 10 of 18: skipped 10. Go on with the next 8?", self.flat)
-        self.assertIn("Good place to stop: skipped 10. The other 8 jobs will be here next time.", self.flat)
+        self.assertIn("Good place to stop: skipped 10. Everything you didn't keep or toss will be here next time.", self.flat)
         self.assertNotIn("whole catch", self.out)
         self.assertNotIn("11 of 18", self.out)
         self.run_cli("go", keys=["s"] * 10 + ["y"] + ["s"] * 8)  # two full hands, then the real end
@@ -354,7 +354,7 @@ class DeckRound2(Base):
         self.assertEqual(self.out.count(" 1 of 18"), 2)  # card one came back
         self.assertIn("Back one card. Whatever you chose on it is undone.", self.flat)
         self.assertEqual(self.q("SELECT status FROM job_marks"), [("tossed",)])
-        self.assertIn("Stopping here: tossed 1.", self.flat)
+        self.assertIn("Stopped here: tossed 1.", self.flat)
 
     def test_back_on_the_first_card_does_nothing_surprising(self):
         self.run_cli("go", keys=["b", "q"])
@@ -375,7 +375,7 @@ class DeckRound2(Base):
 
     def test_end_of_input_takes_the_quit_path(self):
         self.run_cli("go", keys=["k"])  # one answer, then the input closes
-        self.assertIn("Stopping here: kept 1. The other 17 jobs will be here next time.", self.flat)
+        self.assertIn("Stopped here: kept 1. Everything you didn't keep or toss will be here next time.", self.flat)
         self.assertNotIn("whole catch", self.out)
         self.assertEqual(self.q("SELECT COUNT(*) FROM job_marks"), [(1,)])
 
@@ -402,7 +402,7 @@ class DeckRound2(Base):
 
     def test_enter_means_is_said_in_each_question(self):
         self.assertIn("Enter means offline", ui.COPY["routing_ask"])
-        self.assertIn("Enter means yes", ui.COPY["geocode_notice"])
+        self.assertIn("Type y to send it, or n", ui.COPY["geocode_notice"])
         self.assertIn("Enter to skip", ui.COPY["known_drive_ask"])
         self.assertIn("Enter to skip", ui.COPY["known_drive_minutes"])
         self.assertIn("Enter for {default}", ui.COPY["radius_ask"])
@@ -629,3 +629,61 @@ class Review(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReviewFixes(Base):
+    """Defects the final review found that no earlier test would have caught."""
+    def test_consent_must_be_typed(self):
+        self.run_cli(keys=(ADDRESS, ""))             # Enter, then input ends: neither is a yes
+        self.assertEqual(self.geocoded, [])
+        self.assertIn("Type one of these letters", self.out)
+        self.run_cli(keys=(ADDRESS,))                # input ends at the notice
+        self.assertEqual(self.geocoded, [])
+
+    def test_end_of_input_at_the_routing_question_stops_before_any_fetch(self):
+        with mock.patch.object(edjoin, "fetch_listings", side_effect=AssertionError("fetched with nobody there")):
+            self.assertEqual(self.run_cli(keys=("95814", "")), 1)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM commutes"), [(0,)])
+
+    def test_first_keeper_line_is_not_repeated_after_an_undo(self):
+        self.first_run("k", "b", "k", "q")
+        self.assertEqual(self.out.count("Your first keeper."), 1)
+
+    def test_setup_again_on_a_finished_home_does_not_fetch(self):
+        self.first_run("q")
+        with mock.patch.object(edjoin, "fetch_listings", side_effect=AssertionError("setup started a session")):
+            self.assertEqual(self.run_cli("setup", keys=("",)), 0)
+        self.assertIn("Setup is done.", self.out)
+
+    def test_a_failed_switch_to_roads_leaves_no_road_rows_behind(self):
+        self.first_run("q")
+        calls = []
+        def osrm(home, part, cfg):                   # the first batch answers, the second does not
+            calls.append(1)
+            if len(calls) > 1:
+                raise travel.RoutingUnavailable("x")
+            return [(10.0, 10.0)] * len(part)
+        with mock.patch.object(travel, "osrm", osrm), mock.patch.object(travel, "BATCH", 2):
+            self.assertEqual(self.run_cli("routing", "roads"), 1)
+        self.assertEqual(config.load(self.cfg).routing, "estimate")
+        self.assertEqual(self.q("SELECT provider, COUNT(*) FROM commutes GROUP BY 1"), [("estimate", 4)])
+
+    def test_with_two_homes_a_deleted_config_adopts_neither(self):
+        self.first_run("q")
+        self.run_cli("home", "38.60,-121.45")
+        os.remove(self.cfg)
+        self.assertEqual(self.run_cli("keepers"), 0)
+        self.assertIsNone(config.load(self.cfg).home_key)
+
+    def test_edjoin_refusing_posting_pages_still_deals_the_saved_jobs(self):
+        self.first_run("q")
+        with mock.patch.object(edjoin, "fetch_sites", side_effect=edjoin.EdjoinRefused(429)), \
+                mock.patch("match.needs_detail", lambda conn, cfg, limit=40: [1]):
+            self.assertEqual(self.run_cli("go", keys=("q",)), 0)
+        self.assertIn("asked me to slow down", self.flat)
+        self.assertIn("1 of 6", self.out)
+
+    def test_a_shrunk_radius_is_saved(self):
+        self.first_run("q")
+        self.assertEqual(self.run_cli("radius", "1"), 0)
+        self.assertLess(self.q("SELECT COUNT(*) FROM commutes")[0][0], 4)  # read through a second connection

@@ -278,7 +278,7 @@ A warm colleague in the staff room. Short sentences. Plain words. At most one ex
  ── 2 of 7 ───────────────────────────────────────────── closes Fri (3 days)
  Math Teacher, Grades 7–8
  Roosevelt Middle · Fresno Unified
- Drive   ~22 min there · ~26 home if you leave by 3:30   (about 4 hrs a week)
+ Drive   ~22 min there · ~26 home if you leave at 3:30   (about 4 hrs a week)
  School  612 students, steady (+1% in a year) · 24 teachers · Title I
  Pay     $58,400–$104,200
  [k]eep   [t]oss   [s]kip   [o]pen posting   [m]ore about the school   [q]uit
@@ -525,6 +525,9 @@ Check each line of the 04 spec's requirements, constraints and deliverables: met
 | Traffic-aware drive time from a provider with departure/arrival time | Open road routing × a public rush-hour index × a personal correction | §1: the terms of the free commercial option forbid the cache the spec also requires |
 | An LLM call fuzzy-matches each listing | Exact and coded matching first; LLM only for the leftovers and only if configured | owner's instruction that it must work without an API |
 | edjoin "requires user authentication to search"; handle it | No authentication at all | the probe (`RECON.md`) found the site's own search endpoint and the posting pages answer anonymous requests; the simplest handling of a login is not needing one |
+| Arrive 7:00, leave 3:30 as inputs to the provider | They are labels on a fixed rush-hour factor per county and direction | no open data source takes a departure time; the card says "if you leave at 3:30" so the assumption is visible |
+| Criteria-based filtering of results (location, position type) | Fetch is filtered by county and a fixed list of 17 teacher job types; search filters by commute, posting age, level, charter, enrollment, Title I and mark. There is no user filter by position type | the listing's job type is stored (`jobs.category`) but nothing filters on it yet |
+| An LLM call for the leftovers | Leftovers scoring under 0.75 never reach the model; they are recorded as `none` | an employer with nothing close in the state file (a prison, a private school) is not a fuzzy-matching question |
 | Four tables | Eight | homes, known drives, match cache and the user's marks each hold a different kind of fact |
 | Query interface | Kept as `search`, plus a guided daily flow and an HTML page | owner's request for a cheerful, engaging experience |
 
@@ -560,3 +563,20 @@ Nothing blocks waves 0–5.
 2. ~~Known drives.~~ Received 2026-11-16: six observations to two schools, used in §3 Commute. The lead enters them with `drove` in the local (gitignored) database for the final check.
 3. Optional: Ollama installed with any small model, to exercise the LLM tier for free. Without it that tier ships tested only against a stand-in.
 4. Allow Agent B's requests to edjoin when the permission prompt appears.
+
+## 12. As built: where the code differs from the sections above
+
+Written after the final review (2026-11-16). The sections above are the plan as it stood before each wave; the code, `README.md` and `RECON.md` are current.
+
+- **§2:** the anonymous edjoin call is confirmed (`RECON.md`).
+- **§3 files:** tests are one `test_<module>.py` per module, not one file. `flows.py` and `chart.py` exist as planned; `playtest/` holds the two playtest logs.
+- **§3 schema:** `schools` gained `geo_county_name` (89 schools are administered from a county they do not sit in). `name_matches.method` gained `none`. `homes.factor` became `factor_am` and `factor_pm`.
+- **§3 commute:** `COEFFS` are fitted (`calibrate.py --report`). The personal factors are refitted whenever modelled minutes change, not only when a drive is recorded. A failed switch to road routing restores an all-offline cache.
+- **§3 fetch:** counties are the physical county of every school in range plus the administrative county of non-charter schools. Rows downloaded before a failure are saved. If edjoin refuses partway, the session still deals the saved jobs.
+- **§3 match:** before ranking, the district's school names are searched for inside the title and site text (not cached, because it costs nothing). Schools named by surname match when the level word agrees and only one school in the district fits. Names with a grade span match without it. A charter network is never matched to one of its schools unless the title names it in full. Scores under 0.75 are `none`.
+- **§4 deck:** dealt ten cards at a time with a stop after each hand; a `[b]ack` key; only a single letter or the whole word is accepted; end of input stops honestly. Zero exclamation marks, not one.
+- **§4 card:** the afternoon figure reads "if you leave at 3:30".
+- **§7 commands added:** `keep`, `toss`, `radius`, `routing`. `setup` on a finished home does not fetch.
+- **§9 additions:** there is no command to write a coordinate correction (the columns exist and survive re-ingest). Dates use the machine's local day, so a computer not on Pacific time can show a deadline as closed a few hours early. The model tier has never run against a real model.
+- **§11:** the owner's drives were compared with the real code in a scratch database (§3 Commute table). They are not stored anywhere in this repository.
+

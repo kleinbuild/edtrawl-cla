@@ -168,6 +168,7 @@ def update_commutes(conn, cfg, on_progress=None, today=None):
     keep = {s["cds_code"] for s in schools}
     gone = [r[0] for r in conn.execute("SELECT cds_code FROM commutes WHERE home_key = ?", (cfg.home_key,)) if r[0] not in keep]
     conn.executemany("DELETE FROM commutes WHERE home_key = ? AND cds_code = ?", [(cfg.home_key, c) for c in gone])
+    conn.commit()  # on its own: when nothing below needs computing, no later commit would save the removal
     have = {r["cds_code"]: r for r in conn.execute("SELECT * FROM commutes WHERE home_key = ?", (cfg.home_key,))}
 
     def fresh(code):
@@ -195,6 +196,7 @@ def update_commutes(conn, cfg, on_progress=None, today=None):
         done += len(part)
         if on_progress:
             on_progress(done, len(todo), "commutes")
+    refit(conn, cfg.home_key)  # the modelled minutes may have changed under the user's known drives
     return {"in_range": len(schools), "computed": len(todo), "skipped": len(schools) - len(todo), "removed": len(gone)}
 
 
@@ -209,14 +211,22 @@ def record_drive(conn, cfg, cds_code, minutes, direction):
         "INSERT INTO known_drives (home_key, cds_code, direction, minutes, noted_on) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(home_key, cds_code, direction) DO UPDATE SET minutes=excluded.minutes, noted_on=excluded.noted_on",
         (cfg.home_key, cds_code, direction, minutes, date.today().isoformat()))
+    conn.commit()
+    return refit(conn, cfg.home_key)
+
+
+def refit(conn, home_key):
+    """Recompute the home's personal factors from its known drives and the current modelled minutes.
+    Run after a known drive is recorded and after the modelled minutes change (routing switch, refresh)."""
     f = {}
     for d in ("am", "pm"):
         ratios = [r[0] for r in conn.execute(
             f"SELECT k.minutes / c.{d}_minutes FROM known_drives k JOIN commutes c "
             f"ON c.home_key = k.home_key AND c.cds_code = k.cds_code "
-            f"WHERE k.home_key = ? AND k.direction = ? AND c.{d}_minutes > 0", (cfg.home_key, d))]
+            f"WHERE k.home_key = ? AND k.direction = ? AND c.{d}_minutes > 0", (home_key, d))]
         f[d] = min(2.0, max(0.5, statistics.median(ratios))) if ratios else None
-    f["am"], f["pm"] = (f["am"] or f["pm"] or 1.0, f["pm"] or f["am"] or 1.0)  # a direction without data borrows the other's
-    conn.execute("UPDATE homes SET factor_am = ?, factor_pm = ? WHERE home_key = ?", (f["am"], f["pm"], cfg.home_key))
-    conn.commit()
-    return f["am"], f["pm"]
+    if f["am"] or f["pm"]:  # no usable drive at all (none recorded, or its school left the range): keep what is there
+        f["am"], f["pm"] = f["am"] or f["pm"], f["pm"] or f["am"]  # a direction without data borrows the other's
+        conn.execute("UPDATE homes SET factor_am = ?, factor_pm = ? WHERE home_key = ?", (f["am"], f["pm"], home_key))
+        conn.commit()
+    return tuple(conn.execute("SELECT factor_am, factor_pm FROM homes WHERE home_key = ?", (home_key,)).fetchone())

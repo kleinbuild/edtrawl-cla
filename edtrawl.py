@@ -1,5 +1,6 @@
 """Command-line entry point. Wires the modules together; every word goes through ui.py (COPY keys)."""
 import argparse
+import os
 import re
 import socket
 import sqlite3
@@ -49,8 +50,9 @@ def locate(conn, target, zip_arg=None):
     elif m := LATLNG.fullmatch(target):
         lat, lng = float(m[1]), float(m[2])
     elif len(target) >= 5 and re.search(r"\d", target):
-        # Consent first. Not on a terminal nobody can answer, and typing the address on the command line is the ask.
-        if ui.ask("geocode_notice", choices="yn", default="y") != "y":
+        # Consent first, and it must be typed: Enter or end of input never sends an address. With no terminal
+        # nobody can answer, and typing the address on the command line was the ask.
+        if ui.ask("geocode_notice", choices="yn", default=None if ui.CAPS["interactive"] else "y", eof="n") != "y":
             raise HomeProblem("home_declined")
         found = travel.geocode(target)  # the one use of the address; it is never stored, logged or echoed
         if found is None:
@@ -192,7 +194,7 @@ def cmd_search(args, conn, cfg):
     elif other:
         ui.say("empty_filtered")  # some other filter emptied it: "no jobs near you" would be untrue
     elif args.max_commute is None:
-        ui.say("empty_none_near", radius=cfg.radius_miles)
+        ui.say("empty_none_saved", radius=cfg.radius_miles)
 
 
 def cmd_chart(args, conn, cfg):
@@ -380,14 +382,19 @@ def main(argv=None):
         conn = db.connect(args.db)
         db.init_db(conn)
         if not cfg.home_key:  # config.toml was deleted or never written, but the database remembers home
-            row = conn.execute("SELECT home_key FROM homes ORDER BY created_on DESC, rowid DESC LIMIT 1").fetchone()
-            if row:
-                cfg.home_key = row[0]
-                config_mod.set("home_key", row[0], args.config)
+            rows = conn.execute("SELECT home_key FROM homes").fetchall()
+            if len(rows) == 1:  # with several, the database cannot say which was current: ask again instead
+                cfg.home_key = rows[0][0]
+                config_mod.set("home_key", cfg.home_key, args.config)
         return COMMANDS[args.command](args, conn, cfg) or 0
     except KeyboardInterrupt:
         ui.say("stopped")
         return 130
+    except BrokenPipeError:
+        # Output went to `head` or a closed pager: nobody is reading, so there is nothing to say. Point stdout
+        # at nowhere so Python's exit-time flush does not print a traceback of its own.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
     except Exception as e:
         return _unexpected(e, args)
     finally:

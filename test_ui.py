@@ -62,7 +62,7 @@ class Formatters(unittest.TestCase):
 
     def test_drive_line(self):
         self.assertEqual(ui.drive_line(21.6, 26.2),
-                         "~22 min there · ~26 home if you leave by 3:30   (about 4 hrs a week)")
+                         "~22 min there · ~26 home if you leave at 3:30   (about 4 hrs a week)")
         self.assertIn("about 1 hr a week", ui.drive_line(6, 6))
         self.assertIn("about 4.5 hrs a week", ui.drive_line(25, 29))
         self.assertIn("about 20 min a week", ui.drive_line(2, 2))
@@ -160,7 +160,7 @@ class Renderers(unittest.TestCase):
         self.assertEqual(card[1:], [
             " Math Teacher, Grades 7-8",
             " Roosevelt Middle · Fresno Unified",
-            " Drive   ~22 min there · ~26 home if you leave by 3:30   (about 4 hrs a week)",
+            " Drive   ~22 min there · ~26 home if you leave at 3:30   (about 4 hrs a week)",
             " School  612 students, steady (+1% in a year) · 24 teachers · Title I",
             " Pay     $58,400-$104,200",
         ])

@@ -51,7 +51,7 @@ The progress bars are left out here. The school counts come from the state's sch
 
 **Step 1 of 4, home.** Give one of three things:
 
-- A street address. EdTrawl sends the address once to the US Census Bureau's free geocoder to find the spot. It asks first. It never saves the address.
+- A street address. EdTrawl sends the address once to the US Census Bureau's free geocoder to find the spot. It asks first, and only sends it if you type `y`. It never saves the address.
 - A ZIP code. No internet is needed. Home is placed at the middle of that ZIP code's schools, so drive times are a little rougher.
 - A map position, typed as two numbers with a comma between them, for example `36.74,-119.79`.
 
@@ -79,7 +79,7 @@ You can switch at any time with `python edtrawl.py routing roads` or `python edt
 
 **Step 4 of 4, one drive you know.** Type the name of a school you drive to now, or used to. Then type your real morning drive time in minutes. EdTrawl adjusts its estimates to match your roads. You can press Enter to skip this step and come back to it later with `drove`, which is described in section 5.
 
-If you stop setup part way, for example by closing the terminal, the next run picks up at the first step you did not finish. It does not quietly use the default answers.
+If you stop setup part way, for example by closing the terminal, the next run picks up where you stopped: it asks again how far to look and how to work out drive times if those were not answered. The one exception is the last step, the drive you know. It is optional, so it is not asked again on its own; use `drove` (section 5) or run `setup` again.
 
 The first run took about 95 seconds in the recorded run. Most of that time went to two steps:
 
@@ -98,13 +98,13 @@ Each day, run the same command:
 python edtrawl.py
 ```
 
-EdTrawl does three things. It looks for new jobs. It works out drive times for any new school. Then it shows you each new job once, ten at a time. If this computer is not online, EdTrawl says it could not check for new jobs and shows the ones it already saved. Here is one real job card from the recorded run. Only its key line, at the bottom, has changed since:
+EdTrawl does three things. It looks for new jobs. It works out drive times for any new school. Then it shows you each job you have not yet kept or tossed, ten at a time. A job you skip comes back next time. If this computer is not online, EdTrawl says it could not check for new jobs and shows the ones it already saved. Here is one real job card from the recorded run. Only its key line, at the bottom, has changed since:
 
 ```
  ── 2 of 58 ─────────────────────────────────────────────── closes Thu (3 days)
  Teacher, Special Education, Preschool SDC MMLE @ Washington ELEM-113
  Washington Elementary · Sacramento City Unified
- Drive   ~4 min there · ~5 home if you leave by 3:30   (about 50 min a week)
+ Drive   ~4 min there · ~5 home if you leave at 3:30   (about 50 min a week)
  School  362 students, shrinking (-4% in a year) · 19 teachers · Title I
  Pay     not listed
 [k]eep   [t]oss   [s]kip   [b]ack   [o]pen   [m]ore about the school   [q]uit
@@ -117,7 +117,7 @@ What each line means:
 - **The job title** comes from the posting. The school name is in it when the employer wrote one.
 - **The school and district** are the place the job is at. A card that says `Site not listed` is a real job. The posting names the district but not a school, so the drive is shown as a range across the district's schools in range. These cards do not offer `[m]ore about the school`, because there is no one school to tell you about.
 - **`Drive`** is the drive time to the school, to work and back home. The `~` sign means the time is an estimate. EdTrawl puts `~` on every drive time it works out. It never presents one as a measured time.
-- **`if you leave by 3:30`** is the assumption behind the drive home. The afternoon drive is worked out for leaving at 3:30. Leaving later is usually slower.
+- **`if you leave at 3:30`** is the assumption behind the drive home. The afternoon drive is worked out for leaving at 3:30. Leaving later is usually slower.
 - **`about 50 min a week`** (or `about 4 hrs a week`) is the drive time for five working days, there and back, added together.
 - **`School`** is the enrollment this year, and whether it is growing, steady or shrinking compared with a year before. Then the staff count and any special program the state lists, such as Title I.
 - **`Pay`** is the pay text from the posting. `not listed` means the posting does not say.
@@ -168,7 +168,7 @@ Special Education - DEPT-62.1.
 First one in the logbook. That's the hard part done.
 ```
 
-**`logbook`** shows what you have looked at, kept and applied for. Use it to see your own progress.
+**`logbook`** shows what you have decided on (kept or tossed), kept and applied for. Skipped jobs are not counted. Use it to see your own progress.
 
 ```
 python edtrawl.py logbook
@@ -176,8 +176,8 @@ python edtrawl.py logbook
 
 ```
 Logbook
-This week: looked at 2, kept 1, applied to 0.
-Since Nov 16: looked at 2, kept 1, applied to 0.
+This week: decided on 2, kept 1, applied to 0.
+Since Nov 16: decided on 2, kept 1, applied to 0.
 Nov 16  kept     Augmentative and Alternative Communication Specialist @
 Special Education - DEPT-62.1 · Sacramento City Unified School District
 ```
@@ -208,7 +208,7 @@ python edtrawl.py school "Washington Elementary, Sacramento"
  Grades    K–6 · Elementary · Title I
  Students  362, shrinking (-4% in a year)
  Staff     19 teachers · 33 staff in all
- Drive     ~5 min there · ~5 home if you leave by 3:30   (about 50 min a week)
+ Drive     ~5 min there · ~5 home if you leave at 3:30   (about 50 min a week)
  Website   http://washington.scusd.edu/
  Drive times assume arriving by 7:00 and leaving at 3:30 on a weekday. Later
  in the afternoon is usually slower.
@@ -224,9 +224,9 @@ python edtrawl.py drove "Washington Elementary, Sacramento" 6
 ```
 
 ```
-For Washington Elementary you said 6 min, and I'd estimated ~5. I've scaled
-every morning estimate by the same amount, so the typical school near you went
-from ~7 to ~9 min.
+For Washington Elementary you said 6 min, and I'd estimated ~4. I've scaled
+every morning estimate by the same amount: half the schools near you are now
+within ~32 min (it was ~23).
 ```
 
 Use `drove` whenever an estimate looks wrong. One real drive fixes every estimate for that direction.
@@ -301,7 +301,7 @@ python edtrawl.py routing roads
 python edtrawl.py routing offline
 ```
 
-**`setup`** runs the setup steps again. It skips any step that is already done, so on a home that is set up it does little. To change the home, use `home`.
+**`setup`** runs the setup steps again. It skips any step that is already done. On a home that is fully set up it only offers the optional drive-you-know step again if you skipped it, and it does not fetch jobs. To change the home, use `home`.
 
 ```
 python edtrawl.py setup
@@ -347,7 +347,7 @@ The remedy is `drove`. One drive you know, typed in, fits the estimates for your
 
 EdTrawl contacts only the services below, and only for the reasons listed. Nothing else leaves your computer.
 
-- **data.ca.gov** (the California state data site). EdTrawl downloads the school files, once. It sends a plain file request and no information about you. It only does this when the file is not already in the `data` folder.
+- **gis.data.ca.gov** (the California state data site). EdTrawl downloads the two school files. The site sometimes needs a moment to prepare a file, so EdTrawl may ask again every few seconds for up to a minute. It sends a plain file request and no information about you. It only does this when the file is not already in the `data` folder.
 - **The US Census Bureau geocoder.** Only if you give a street address. It receives that address once, and nothing else. It asks first.
 - **The OSRM routing server** (`router.project-osrm.org`, which uses OpenStreetMap road data). Only if you choose roads. It receives your home spot, rounded to about 100 metres, and the positions of schools near you. It receives nothing else.
 - **edjoin.org** (the job board). EdTrawl asks for teaching jobs by county and job type, a few seconds apart. It also reads a job's own page, for up to 40 jobs each time, when the school name is not in the title. Your home is not sent. The job numbers are sent as part of the web address.
@@ -356,7 +356,7 @@ EdTrawl contacts only the services below, and only for the reasons listed. Nothi
 Stored on your computer:
 
 - `edtrawl.db` holds the schools, the drive times, the job postings, your keep, toss and applied marks, and your home spot.
-- `config.toml` holds your settings and your home spot. If you add a key for an AI model, it goes here too. If you delete it, EdTrawl takes the home spot from the database and writes the file again.
+- `config.toml` holds your settings and your home spot. If you add a key for an AI model, it goes here too. If you delete it, your other settings go back to their defaults. EdTrawl takes the home spot from the database and writes the file again, as long as you have only ever set one home; if you have set more than one, it asks you to set home again.
 - The `data` folder holds the school files from the state.
 - `edtrawl-error.log` is written only when something unexpected goes wrong. It records the kind of error and where it happened. It does not record addresses.
 
@@ -390,7 +390,7 @@ This part has been tested only against a stand-in, not a real model. A small loc
 
 - **A job is missing.** Run `python edtrawl.py match --review`. It lists the postings EdTrawl set aside because they did not clearly match a school or district. They are not lost, and EdTrawl does not guess. On a terminal, you can pick the right name for each one.
 - **A drive time looks off.** Run `python edtrawl.py drove` with the school and your real minutes, as in section 5. Add `--pm` for the drive home.
-- **EdTrawl says it can't read `config.toml`.** It names the file and, when it can, the setting or line. Fix that line in a text editor, or delete the file. Deleting it is safe: your jobs and marks are in the database.
+- **EdTrawl says it can't read `config.toml`.** It names the file and, when it can, the setting or line. Fix that line in a text editor, or delete the file. Your jobs and marks stay in the database; your settings go back to their defaults.
 - **EdTrawl says it can't read `edtrawl.db`.** Move that file somewhere else and run the command again. The school files in the `data` folder stay.
 - **EdTrawl says another window is busy.** Another copy of EdTrawl is using the database. Try again in a minute.
 - **EdTrawl says there are no schools near home.** Use `radius` with a bigger number, or `home` if home is in the wrong place.
@@ -433,6 +433,8 @@ EdTrawl is plain Python, using only the standard library, with one SQLite databa
 - `query.py` runs the searches.
 - `chart.py` writes the chart page.
 - `calibrate.py` is a developer tool. It fits the offline formula against road times and prints the report in section 6.
+
+There is no command to correct a school's position. If the state's coordinates for a school are wrong, the `schools` table has two columns for a hand correction, `lat_override` and `lng_override`. Reloading the state's file never overwrites them, and everything that reads a position uses the correction when one is set. A drive time already saved for that school is not worked out again until it is 90 days old; deleting that school's row from the `commutes` table makes the next run redo it.
 
 To run the tests, go to the EdTrawl folder and type:
 

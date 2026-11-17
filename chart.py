@@ -341,7 +341,7 @@ def render(data, cfg):
                 f"{ui.count(hiring, 'school')} hiring, among the {n_sch:,} in range.")
     else:
         title = "Your chart: no jobs in range" if data.get("fetched", True) else "Your chart: no listings fetched yet"
-        lead = f"{n_sch:,} schools in range are on the chart, so you can see the ground."
+        lead = f"{n_sch:,} schools in range are on the chart."
     soon = lambda j: j["days_left"] is not None and j["days_left"] <= SOON_DAYS
     chips = [f'<li><button type="button" class="chip" aria-pressed="false" data-kind="band" data-band="{i}">'
              f'<svg class="sw b{i}" viewBox="-11 -11 22 22" aria-hidden="true"><use href="#g-{g}"/></svg>'
@@ -358,7 +358,7 @@ def render(data, cfg):
                '<p class="count" id="count" aria-live="polite"></p><ol class="cards">'
                + "".join(_card(j, today, schools) for j in jobs) + "</ol>")
     else:
-        said = ("No teaching jobs are posted within range right now." if data.get("fetched", True)
+        said = ("None of the jobs saved so far are within range." if data.get("fetched", True)
                 else "I haven't fetched any job listings yet, so there are no jobs to show.")
         lst = ('<div class="empty"><p>' + said + "</p>"
                "<p>The schools around you are still on the chart. To fetch listings or look again another day:</p>"

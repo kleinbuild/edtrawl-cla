@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from urllib.parse import urlparse
 
 import config as config_mod
+import edjoin
 import query
 import travel
 import ui
@@ -203,17 +204,20 @@ def setup(args, conn, cfg):
         _step(1, "step_home")
         if not _ask_home(conn, cfg, args):
             return 1
-    if not _count(conn, "SELECT COUNT(*) FROM commutes WHERE home_key = ?", cfg.home_key):
+    first_cast = not _count(conn, "SELECT COUNT(*) FROM commutes WHERE home_key = ?", cfg.home_key)
+    if first_cast:
         _step(2, "step_schools")
         if not _reveal(conn, cfg, args):
             return 1
         _step(3, "step_routing")
-        _drive_times(conn, cfg, args)
+        if not _drive_times(conn, cfg, args):
+            return 1
     if not _count(conn, "SELECT COUNT(*) FROM known_drives WHERE home_key = ?", cfg.home_key):
         _step(4, "step_known_drive")
         _known_drive(conn, cfg)
     ui.say("setup_done")
-    return session(conn, cfg)
+    if first_cast:  # straight into the first catch; a later `setup` only fills in what was skipped
+        return session(conn, cfg)
 
 
 def _load_schools(conn):
@@ -298,7 +302,10 @@ def _drop_road_times(conn, cfg):
 def _drive_times(conn, cfg, args):
     server = urlparse(cfg.osrm_url).netloc
     while True:
-        choice = ui.ask("routing_ask", choices="or", default="o", words={"o": "offline", "r": "roads"}, server=server)
+        choice = ui.ask("routing_ask", choices="or", default="o", words={"o": "offline", "r": "roads"}, eof=None,
+                        server=server)
+        if choice is None:  # input ended: nobody chose, so do not go on to fetch with a default
+            return ui.say("stopped") or False
         cfg.routing = "osrm" if choice == "r" else "estimate"
         try:
             travel.update_commutes(conn, cfg, on_progress=cli.prog("progress_drives"))
@@ -309,6 +316,7 @@ def _drive_times(conn, cfg, args):
             ui.say("err_routing_unreachable_setup")
     config_mod.set("routing", cfg.routing, args.config)
     _say_ready(conn, cfg)  # only now that the drive times exist
+    return True
 
 
 def _known_drive(conn, cfg):
@@ -368,6 +376,9 @@ def routing(args, conn, cfg):
         travel.update_commutes(conn, cfg, on_progress=cli.prog("progress_drives"))
     except travel.RoutingUnavailable:
         cfg.routing = old  # keep the previous setting, and say so
+        if old == "estimate":  # batches that did finish are road rows: drop them so the cache matches the setting
+            _drop_road_times(conn, cfg)
+            travel.update_commutes(conn, cfg)
         return ui.say("err_routing_switch") or 1
     config_mod.set("routing", want, args.config)
     _say_ready(conn, cfg)
@@ -400,7 +411,7 @@ def session(conn, cfg):
     last = conn.execute("SELECT MAX(last_seen) FROM jobs").fetchone()[0]
     prev = date.fromisoformat(last) if last else None
     # 31 days on the first cast or after more than a week away; otherwise 7 (edjoin accepts 1, 7 or 31)
-    days = 31 if prev is None or (date.today() - prev).days > 7 else 7
+    days = 31 if prev is None or (date.today() - prev).days > 6 else 7  # 7 days back from a cast 7 days ago could miss a day
     offline = False
     try:
         code = cli.cmd_fetch(SimpleNamespace(days=days, limit=None, from_file=None), conn, cfg)
@@ -408,6 +419,11 @@ def session(conn, cfg):
         if not _deck_rows(conn, cfg, date.today()):
             raise  # nothing saved to show: stop with the offline message
         ui.say("fetch_offline")
+        code, offline = None, True
+    except edjoin.EdjoinError as e:  # refused or failing partway: what was already saved is still worth showing
+        if not _deck_rows(conn, cfg, date.today()):
+            raise
+        ui.say(cli._speak(e, None)[0])
         code, offline = None, True
     return code or deck(conn, cfg, prev, offline)
 
@@ -457,6 +473,7 @@ def deck(conn, cfg, prev, offline=False):
     t = {"kept": 0, "tossed": 0, "skipped": 0}
     did = {}       # card index -> "kept" / "tossed" / "skipped", so [b]ack can undo it
     asked = set()  # hand boundaries already offered, so going back over one doesn't ask twice
+    warmed = False  # the first-keeper line was said this session; an undo must not bring it back
     i = 0
     try:
         while i < n:
@@ -489,8 +506,9 @@ def deck(conn, cfg, prev, offline=False):
                 status = "kept" if key == "k" else "tossed"
                 first = _mark(conn, rows[i]["posting_id"], status)
                 ui.say(status)
-                if first and key == "k":
+                if first and key == "k" and not warmed:
                     ui.say("first_keep")
+                    warmed = True
             t[status] += 1
             did[i] = status
             i += 1
