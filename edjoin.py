@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 USER_AGENT = "EdTrawl/0.1 (personal job-search tool)"
 DELAY = 2.0          # seconds between requests, never fewer
@@ -18,7 +18,10 @@ TEACHER_TYPES = "1,2,3,4,48,5,46,6,7,8,9,10,11,55,56,63,64"  # RECON.md section 
 LISTING = "https://www.edjoin.org/Home/LoadJobs"
 POSTING = "https://www.edjoin.org/Home/JobPosting/"
 _POSTING_URL = re.compile(r"https://www\.edjoin\.org/Home/JobPosting/[0-9]+")
-_LA = ZoneInfo("America/Los_Angeles")
+try:
+    _LA = ZoneInfo("America/Los_Angeles")
+except ZoneInfoNotFoundError as e:
+    raise SystemExit("Time zone data missing. Run: python -m pip install tzdata") from e
 
 # RECON.md section 2 (LoadRegions); keys match CDE `County Name`.
 COUNTY_IDS = {n: i for i, n in enumerate((
